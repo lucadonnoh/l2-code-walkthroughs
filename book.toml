@@ -1,0 +1,6 @@
+[book]
+authors = ["Luca Donno"]
+language = "en"
+multilingual = false
+src = "specs"
+title = "L2 specs"
