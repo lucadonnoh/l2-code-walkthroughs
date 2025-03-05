@@ -7,3 +7,4 @@ title = "L2 code walkthroughs"
 
 [output.html]
 additional-js = ["specs/static/solidity.min.js"]
+default-theme = "ayu"
