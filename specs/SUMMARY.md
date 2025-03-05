@@ -1,7 +1,7 @@
 # Summary
 
-- [Chapter 1](./chapter_1.md)
+- [Intro](./chapter_1.md)
 
 # Arbitrum
 
-- [Sequencing](./arbitrum/sequencing.md)
+- [Forced transactions](./arbitrum/forced_txs.md)
