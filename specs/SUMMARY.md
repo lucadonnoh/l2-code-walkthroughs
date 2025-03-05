@@ -4,4 +4,4 @@
 
 # Arbitrum
 
-- [Sequencing](./arbitrum/buffer.md)
+- [Buffer](./arbitrum/buffer.md)
