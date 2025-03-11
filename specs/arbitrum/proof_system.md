@@ -9,6 +9,11 @@
 
 Each pending assertion is backed by one single stake. A stake on an assertion also counts as a stake for all of its ancestors in the assertions tree. If an assertion has a child made by someone else, its stake can be moved anywhere else since there is already some stake backing it. Implicitly, the stake is tracked to be on the latest assertion a staker is staked on, and the outside logic makes sure that a new assertion can be created only in the proper conditions. In other words, it is made impossible for one actor to be staked on multiple assertions at the same time.
 
+<figure>
+    <img src="../static/assets/assertiontree.svg" alt="Assertion tree">
+    <figcaption>An example of an assertion tree during an execution of the BoLD protocol.</figcaption>
+</figure>
+
 ## `RollupUserLogic`: the `stakeOnNewAssertion` function
 
 The entry point to propose new state roots, given that the staker is already staked on some other assertion on the same branch, is the `stakeOnNewAssertion` function in the `RollupProxy` contract, more specifically in the `RollupUserLogic` implementation contract. 
