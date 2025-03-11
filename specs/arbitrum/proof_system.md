@@ -1,5 +1,19 @@
 # The BoLD proof system
 
+<!-- START doctoc generated TOC please keep comment here to allow auto update -->
+<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+**Table of Contents**
+
+- [High-level overview](#high-level-overview)
+- [`RollupUserLogic`: the `stakeOnNewAssertion` function](#rollupuserlogic-the-stakeonnewassertion-function)
+- [`RollupUserLogic`: the `newStakeOnNewAssertion` function](#rollupuserlogic-the-newstakeonnewassertion-function)
+- [`RollupUserLogic`: the `newStake` function](#rollupuserlogic-the-newstake-function)
+- [`RollupUserLogic`: the `returnOldDeposit` and `returnOldDepositFor` functions](#rollupuserlogic-the-returnolddeposit-and-returnolddepositfor-functions)
+- [`RollupUserLogic`: the `withdrawStakerFunds` function](#rollupuserlogic-the-withdrawstakerfunds-function)
+- [`RollupUserLogic`: the `addToDeposit` function](#rollupuserlogic-the-addtodeposit-function)
+
+<!-- END doctoc generated TOC please keep comment here to allow auto update -->
+
 <figure>
     <img src="../static/assets/boldstructs.svg" alt="BoLD structs">
     <figcaption>Some of the used structures and performed checks before creating a new assertion.</figcaption>
@@ -7,12 +21,14 @@
 
 ## High-level overview
 
-Each pending assertion is backed by one single stake. A stake on an assertion also counts as a stake for all of its ancestors in the assertions tree. If an assertion has a child made by someone else, its stake can be moved anywhere else since there is already some stake backing it. Implicitly, the stake is tracked to be on the latest assertion a staker is staked on, and the outside logic makes sure that a new assertion can be created only in the proper conditions. In other words, it is made impossible for one actor to be staked on multiple assertions at the same time.
+Each pending assertion is backed by one single stake. A stake on an assertion also counts as a stake for all of its ancestors in the assertions tree. If an assertion has a child made by someone else, its stake can be moved anywhere else since there is already some stake backing it. Implicitly, the stake is tracked to be on the latest assertion a staker is staked on, and the outside logic makes sure that a new assertion can be created only in the proper conditions. In other words, it is made impossible for one actor to be staked on multiple assertions at the same time. If the last assertion of a staker has a child or is confirmed, then the staker is considered "inactive". If conflicting assertions are created, then one stake amount will be moved to a "loser stake escrow" as the protocol guarantees that only one stake will eventually remain active, and that the other will be slashed.
 
 <figure>
     <img src="../static/assets/assertiontree.svg" alt="Assertion tree">
     <figcaption>An example of an assertion tree during an execution of the BoLD protocol.</figcaption>
 </figure>
+
+The token used for staking is defined in the `stakeToken` onchain value.
 
 ## `RollupUserLogic`: the `stakeOnNewAssertion` function
 
@@ -172,3 +188,45 @@ function newStake(
 ```
 
 as above, under the hood, the latest confirmed assertion is used as the latest staked assertion for this staker. The funds are then transferred from the staker to the contract.
+
+## `RollupUserLogic`: the `returnOldDeposit` and `returnOldDepositFor` functions
+
+This function is used to initiate a refund of the staker's deposit when its latest assertion either has a child or is confirmed.
+
+```solidity
+function returnOldDeposit() external override onlyValidator(msg.sender) whenNotPaused
+```
+
+```solidity
+function returnOldDepositFor(
+    address stakerAddress
+) external override onlyValidator(stakerAddress) whenNotPaused
+```
+
+In the first case, it is checked than the `msg.sender` is the validator itself, while in the second case that the sender is the designated withdrawal address for the staker. Then it is verified that the staker is actively staked, and that it is "inactive". A staker is defined as inactive when their latest assertion is either confirmed or has at least one child, meaning that there is some other stake backing it.
+
+At this point the `_withdrawableFunds` mapping value is increased by the staker's deposit for its withdrawal address, as well as the `totalWithdrawableFunds` value. The staker is then deleted from the `_stakerList` and `_stakerMap` mappings. The funds are not actually transferred at this point.
+
+## `RollupUserLogic`: the `withdrawStakerFunds` function
+
+This function is used to finalize the withdrawal of uncommitted funds from this contract to the `msg.sender`.
+
+```solidity
+function withdrawStakerFunds() external override whenNotPaused returns (uint256)
+```
+
+This is done by checking the `_withdrawableFunds` mapping, which maps from addresses to `uint256` amounts. The mapping is then set to zero, and the `totalWithdrawableFunds` value is updated accordingly. Finally, the funds are transferred to the `msg.sender`.
+
+## `RollupUserLogic`: the `addToDeposit` function
+
+This function is used to add funds to the staker's deposit.
+
+```solidity
+function addToDeposit(
+    address stakerAddress,
+    address expectedWithdrawalAddress,
+    uint256 tokenAmount
+) external whenNotPaused
+```
+
+The staker is supposed to be already staked when calling this function. In particular, the `amountStaked` is increased by the amount sent.
