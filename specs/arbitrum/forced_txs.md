@@ -10,7 +10,7 @@ To force transactions on Arbitrum through L1, the following steps are taken:
 4. The EOA can finally call the `forceInclusion` function on the `SequencerInbox` contract to force the message to be included in the canonical sequence of messages.
 
 ## `Inbox`: the `sendL2MessageFromOrigin` function
-This function acts as the entry point to send L1 to L2 message from a EOA.
+This function acts as the entry point to send L1 to L2 messages from a EOA.
 
 ```solidity
 function sendL2MessageFromOrigin(
