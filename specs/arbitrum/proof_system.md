@@ -11,13 +11,12 @@
 - [`RollupUserLogic`: the `returnOldDeposit` and `returnOldDepositFor` functions](#rollupuserlogic-the-returnolddeposit-and-returnolddepositfor-functions)
 - [`RollupUserLogic`: the `withdrawStakerFunds` function](#rollupuserlogic-the-withdrawstakerfunds-function)
 - [`RollupUserLogic`: the `addToDeposit` function](#rollupuserlogic-the-addtodeposit-function)
+- [`RollupUserLogic`: the `reduceDeposit` function](#rollupuserlogic-the-reducedeposit-function)
+- [`RollupUserLogic`: the `removeWhitelistAfterValidatorAfk` function](#rollupuserlogic-the-removewhitelistaftervalidatorafk-function)
+- [`RollupUserLogic`: the `confirmAssertion` function](#rollupuserlogic-the-confirmassertion-function)
+- [`RollupUserLogic`: the `removeWhitelistAfterFork` function](#rollupuserlogic-the-removewhitelistafterfork-function)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
-
-<figure>
-    <img src="../static/assets/boldstructs.svg" alt="BoLD structs">
-    <figcaption>Some of the used structures and performed checks before creating a new assertion.</figcaption>
-</figure>
 
 ## High-level overview
 
@@ -31,6 +30,11 @@ Each pending assertion is backed by one single stake. A stake on an assertion al
 The token used for staking is defined in the `stakeToken` onchain value.
 
 ## `RollupUserLogic`: the `stakeOnNewAssertion` function
+
+<figure>
+    <img src="../static/assets/boldstructs.svg" alt="BoLD structs">
+    <figcaption>Some of the used structures and performed checks before creating a new assertion.</figcaption>
+</figure>
 
 The entry point to propose new state roots, given that the staker is already staked on some other assertion on the same branch, is the `stakeOnNewAssertion` function in the `RollupProxy` contract, more specifically in the `RollupUserLogic` implementation contract. 
 
@@ -176,6 +180,16 @@ function newStakeOnNewAssertion(
 
 It first checks that the validator is in the whitelist or that the whitelist is disabled, and that it is not already staked. Both the `stakerList` and the `stakerMap` mappings are updated with the new staker information. In particular, the latest confirmed assertion is used as the latest staked assertion. Any pending assertion trivially sits on the same branch as this one. After this, the function flow follows the same as the `stakeOnNewAssertion` function. Finally, the tokens are transferred from the staker to the contract.
 
+An alternative function signature can be found, where the `msg.sender` is passed as the withdrawal address:
+
+```solidity
+function newStakeOnNewAssertion(
+    uint256 tokenAmount,
+    AssertionInputs calldata assertion,
+    bytes32 expectedAssertionHash
+) external
+```
+
 ## `RollupUserLogic`: the `newStake` function
 
 This function is used to join the staker set without adding a new assertion.
@@ -230,3 +244,126 @@ function addToDeposit(
 ```
 
 The staker is supposed to be already staked when calling this function. In particular, the `amountStaked` is increased by the amount sent.
+
+## `RollupUserLogic`: the `reduceDeposit` function
+
+This function is used to reduce the staker's deposit.
+
+```solidity
+function reduceDeposit(
+    uint256 target
+) external onlyValidator(msg.sender) whenNotPaused
+```
+
+The staker is required to be inactive. The difference between the current deposit and the `target` is then added to the amount of withdrawable funds. 
+
+## `RollupUserLogic`: the `removeWhitelistAfterValidatorAfk` function
+
+If a whitelist is enabled, the system allows for its removal if all validators are inactive for a certain amount of time. If the `validatorAfkBlocks` is set to be greater than the challenge period (or more precisely, two times the challenge period in the worst case), then the child will be confirmed (if valid) before being used for the calculation. The first child check is likely used in case the `validatorAfkBlocks` is set to be smaller than the challenge period.
+
+```solidity
+function removeWhitelistAfterValidatorAfk() external
+```
+
+The function checks whether the latest confirmed assertion, or its first child if present, is older than `validatorAfkBlocks`.  If the `validatorAfkBlocks` onchain value is set to 0, this mechanism is disabled.
+
+It's important to note that this function is quite different from its pre-BoLD version.
+
+There is an edge case in case the `minimumAssertionPeriod` is set lower than the difference between the challenge period and the `validatorAfkBlocks`, where the whitelist gets removed no matter what.
+
+<figure>
+    <img src="../static/assets/afkedgecase.svg" alt="Whitelist drop edge case">
+    <figcaption>Since the `validatorAfkBlocks` value is set to be lower than the challenge period, the whitelist might get unexpectedly dropped.</figcaption>
+</figure>
+
+Under standard deployments, the `validatorAfkBlocks` value is set to be around twice the maximum delay caused by the challenge protocol, which is two times the challenge period.
+
+## `RollupUserLogic`: the `confirmAssertion` function
+
+The function is used to confirm an assertion and make it available for withdrawals and in general L2 to L1 messages to be executed on L1.
+
+```solidity
+function confirmAssertion(
+    bytes32 assertionHash,
+    bytes32 prevAssertionHash,
+    AssertionState calldata confirmState,
+    bytes32 winningEdgeId,
+    ConfigData calldata prevConfig,
+    bytes32 inboxAcc
+) external onlyValidator(msg.sender) whenNotPaused
+```
+
+It is first checked that the challenge period has passed by comparing the current block time, the `createdAtBlock` value of the assertion to be confirmed and the `confirmPeriodBlocks` of the config of the previous assertion. The previous assertion must be the latest confirmed assertion, meaning that assertions must be confirmed in order. It is checked whether the previous assertion has only one child or not. If not, it means that a challenge took place, so it is verified that the assertion to be confirmed is the winner. To assert this, a `winningEdgeId` is provided to fetch an edge from the `challengeManager` contract, specified again in the config of the previous assertion.
+
+The `ChallengeEdge` struct is defined as:
+
+```solidity
+struct ChallengeEdge {
+    /// @notice The origin id is a link from the edge to an edge or assertion at a lower level.
+    ///         Intuitively all edges with the same origin id agree on the information committed to in the origin id
+    ///         For a SmallStep edge the origin id is the 'mutual' id of the length one BigStep edge being claimed by the zero layer ancestors of this edge
+    ///         For a BigStep edge the origin id is the 'mutual' id of the length one Block edge being claimed by the zero layer ancestors of this edge
+    ///         For a Block edge the origin id is the assertion hash of the assertion that is the root of the challenge - all edges in this challenge agree
+    ///         that that assertion hash is valid.
+    ///         The purpose of the origin id is to ensure that only edges that agree on a common start position
+    ///         are being compared against one another.
+    bytes32 originId;
+    /// @notice A root of all the states in the history up to the startHeight
+    bytes32 startHistoryRoot;
+    /// @notice The height of the start history root
+    uint256 startHeight;
+    /// @notice A root of all the states in the history up to the endHeight. Since endHeight > startHeight, the startHistoryRoot must
+    ///         commit to a prefix of the states committed to by the endHistoryRoot
+    bytes32 endHistoryRoot;
+    /// @notice The height of the end history root
+    uint256 endHeight;
+    /// @notice Edges can be bisected into two children. If this edge has been bisected the id of the
+    ///         lower child is populated here, until that time this value is 0. The lower child has startHistoryRoot and startHeight
+    ///         equal to this edge, but endHistoryRoot and endHeight equal to some prefix of the endHistoryRoot of this edge
+    bytes32 lowerChildId;
+    /// @notice Edges can be bisected into two children. If this edge has been bisected the id of the
+    ///         upper child is populated here, until that time this value is 0. The upper child has startHistoryRoot and startHeight
+    ///         equal to some prefix of the endHistoryRoot of this edge, and endHistoryRoot and endHeight equal to this edge
+    bytes32 upperChildId;
+    /// @notice The edge or assertion in the upper level that this edge claims to be true.
+    ///         Only populated on zero layer edges
+    bytes32 claimId;
+    /// @notice The entity that supplied a mini-stake accompanying this edge
+    ///         Only populated on zero layer edges
+    address staker;
+    /// @notice The block number when this edge was created
+    uint64 createdAtBlock;
+    /// @notice The block number at which this edge was confirmed
+    ///         Zero if not confirmed
+    uint64 confirmedAtBlock;
+    /// @notice Current status of this edge. All edges are created Pending, and may be updated to Confirmed
+    ///         Once Confirmed they cannot transition back to Pending
+    EdgeStatus status;
+    /// @notice The level of this edge.
+    ///         Level 0 is type Block
+    ///         Last level (defined by NUM_BIGSTEP_LEVEL + 1) is type SmallStep
+    ///         All levels in between are of type BigStep
+    uint8 level;
+    /// @notice Set to true when the staker has been refunded. Can only be set to true if the status is Confirmed
+    ///         and the staker is non zero.
+    bool refunded;
+    /// @notice TODO
+    uint64 totalTimeUnrivaledCache;
+}
+```
+
+where `EdgeStatus` can either be `Pending` or `Confirmed`.
+
+In particular, the `claimId` is checked to be the assertion hash to be confirmed, the `status` has to be `Confirmed` and the `confirmedAtBlock` value should not be zero. On top of the challenge period, it is required that the `confirmedAtBlock` value is at least `challengeGracePeriodBlocks` old, with the purpose of being able to recover in case an invalid assertion is confirmed because of a bug.
+
+The current assertion is checked to be `Pending`, as opposed to `NoAssertion` or `Confirmed`. An external call to the Outbox is made by passing the `sendRoot` and `blockHash` saved in the current assertion's `globalState`. Finally, the `_latestConfirmed` asserrtion is updated with the current one and the status is updated to `Confirmed`.
+
+## `RollupUserLogic`: the `removeWhitelistAfterFork` function
+
+This function is used to remove the whitelist in case the chain id of the underlying chain changes.
+
+```solidity
+function removeWhitelistAfterFork() external
+```
+
+It simply checks that the `deploymentTimeChainId`, which is stored onchain, matches the `block.chainId` value.
