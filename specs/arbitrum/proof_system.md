@@ -5,16 +5,28 @@
 **Table of Contents**
 
 - [High-level overview](#high-level-overview)
-- [`RollupUserLogic`: the `stakeOnNewAssertion` function](#rollupuserlogic-the-stakeonnewassertion-function)
-- [`RollupUserLogic`: the `newStakeOnNewAssertion` function](#rollupuserlogic-the-newstakeonnewassertion-function)
-- [`RollupUserLogic`: the `newStake` function](#rollupuserlogic-the-newstake-function)
-- [`RollupUserLogic`: the `returnOldDeposit` and `returnOldDepositFor` functions](#rollupuserlogic-the-returnolddeposit-and-returnolddepositfor-functions)
-- [`RollupUserLogic`: the `withdrawStakerFunds` function](#rollupuserlogic-the-withdrawstakerfunds-function)
-- [`RollupUserLogic`: the `addToDeposit` function](#rollupuserlogic-the-addtodeposit-function)
-- [`RollupUserLogic`: the `reduceDeposit` function](#rollupuserlogic-the-reducedeposit-function)
-- [`RollupUserLogic`: the `removeWhitelistAfterValidatorAfk` function](#rollupuserlogic-the-removewhitelistaftervalidatorafk-function)
-- [`RollupUserLogic`: the `confirmAssertion` function](#rollupuserlogic-the-confirmassertion-function)
-- [`RollupUserLogic`: the `removeWhitelistAfterFork` function](#rollupuserlogic-the-removewhitelistafterfork-function)
+- [The `RollupUserLogic` contract](#the-rollupuserlogic-contract)
+  - [`stakeOnNewAssertion` function](#stakeonnewassertion-function)
+  - [`newStakeOnNewAssertion` function](#newstakeonnewassertion-function)
+  - [`newStake` function](#newstake-function)
+  - [`returnOldDeposit` and `returnOldDepositFor` functions](#returnolddeposit-and-returnolddepositfor-functions)
+  - [`withdrawStakerFunds` function](#withdrawstakerfunds-function)
+  - [`addToDeposit` function](#addtodeposit-function)
+  - [`reduceDeposit` function](#reducedeposit-function)
+  - [`removeWhitelistAfterValidatorAfk` function](#removewhitelistaftervalidatorafk-function)
+  - [`confirmAssertion` function](#confirmassertion-function)
+  - [`removeWhitelistAfterFork` function](#removewhitelistafterfork-function)
+- [The `RollupAdminLogic` contract](#the-rollupadminlogic-contract)
+  - [`setChallengeManager` function](#setchallengemanager-function)
+  - [`setValidatorWhitelistDisabled` function](#setvalidatorwhitelistdisabled-function)
+  - [`setInbox` function](#setinbox-function)
+  - [`setSequencerInbox` function](#setsequencerinbox-function)
+  - [`setWasmModuleRoot` function](#setwasmmoduleroot-function)
+  - [`setLoserStakeEscrow` function](#setloserstakeescrow-function)
+  - [`forceConfirmAssertion` function](#forceconfirmassertion-function)
+  - [`forceCreateAssertion` function](#forcecreateassertion-function)
+  - [`forceRefundStaker` function](#forcerefundstaker-function)
+  - [`setBaseStake` function](#setbasestake-function)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -29,7 +41,11 @@ Each pending assertion is backed by one single stake. A stake on an assertion al
 
 The token used for staking is defined in the `stakeToken` onchain value.
 
-## `RollupUserLogic`: the `stakeOnNewAssertion` function
+## The `RollupUserLogic` contract
+
+Calls to the Rollup proxy are forwarded to this contract if the `msg.sender` is not the designated proxy admin.
+
+### `stakeOnNewAssertion` function
 
 <figure>
     <img src="../static/assets/boldstructs.svg" alt="BoLD structs">
@@ -155,7 +171,9 @@ struct GlobalState {
 }
 ```
 
-where `u64Vals[0]` represents a inbox position, `u64Vals[1]` represents a position in message, `bytes32Vals[0]` represents a block hash, and `bytes32Vals[1]` represents a send root. It is checked that the position of the `afterState` is greater than the position of the `beforeState`, where the position is first checked against the inbox position, and, if equal, against the message position, to verify that the claim processes at least some new messages. It is then verified that the `beforeStateData`'s `nextInboxPosition` is greater or equal than the `afterState`'s inbox position. The `nextInboxPosition` can be seen as a "target" for the next assertion to process messages up to. If the current assertion didn't manage to process all messages up to the target, it is considered a "overflow" assertion. It is also checked that the current assertion doesn't claim to process more messages than currently posted by the sequencer. The `nextInboxPosition` is prepared for the next assertion to be either the current sequencer message count, or, if the current assertion already processed all messages, to the current sequencer message count plus one. In this way, all assertions are forced to process at least one message, and in this case, the next assertion will process exactly one message before updating the `nextInboxPosition` again. The `afterInboxPosition` is then checked to be non-zero [^2]. The `newAssertionHash` is calculated given the `previousAssertionHash` already checked, the `afterState` and the `sequencerBatchAcc` calculated given the `afterState`'s inbox position in its `globalState`. It is check that this calculated hash is equal to the `expectedAssertionHash`, and that it doesn't already exist in the `_assertions` mapping.
+where `u64Vals[0]` represents a inbox position, `u64Vals[1]` represents a position in message, `bytes32Vals[0]` represents a block hash, and `bytes32Vals[1]` represents a send root. It is checked that the position of the `afterState` is greater than the position of the `beforeState`, where the position is first checked against the inbox position, and, if equal, against the message position, to verify that the claim processes at least some new messages. It is then verified that the `beforeStateData`'s `nextInboxPosition` is greater or equal than the `afterState`'s inbox position. The `nextInboxPosition` can be seen as a "target" for the next assertion to process messages up to. If the current assertion didn't manage to process all messages up to the target, it is considered a "overflow" assertion. It is also checked that the current assertion doesn't claim to process more messages than currently posted by the sequencer.
+
+The `nextInboxPosition` is prepared for the next assertion to be either the current sequencer message count (as per `bridge.sequencerMessageCount()`), or, if the current assertion already processed all messages, to the current sequencer message count plus one. In this way, all assertions are forced to process at least one message, and in this case, the next assertion will process exactly one message before updating the `nextInboxPosition` again. The `afterInboxPosition` is then checked to be non-zero [^2]. The `newAssertionHash` is calculated given the `previousAssertionHash` already checked, the `afterState` and the `sequencerBatchAcc` calculated given the `afterState`'s inbox position in its `globalState`. It is check that this calculated hash is equal to the `expectedAssertionHash`, and that it doesn't already exist in the `_assertions` mapping.
 
 The new assertion is then created using the `AssertionNodeLib.createAssertion` function, which properly constructs the `AssertionNode` struct. The `isFirstChild` field is set to `true` only if the `prevAssertion`'s `firstChildBlock` is zero, meaning that there is none. The assertion status will be `Pending`, the `createdAtBlock` at the current block number, and the `configHash` will contain the current onchain wasm module root, the current onchain base stake, the current onchain challenge period length (`confirmPeriodBlocks`), the current onchain challenge manager contract reference and the `nextInboxPosition` as previously calculated. It is then saved in the previous assertion that a child has been created, and that the `_assertions` mapping is updated with the new assertion hash. 
 
@@ -165,7 +183,7 @@ If the assertion is not a first child, then the stake already present in this co
 
 [^2]: TOCHECK: isn't this excessive...?
 
-## `RollupUserLogic`: the `newStakeOnNewAssertion` function
+### `newStakeOnNewAssertion` function
 
 This function is used to create a new assertion and stake on it if the staker is not already staked on any assertion on the same branch. 
 
@@ -190,7 +208,7 @@ function newStakeOnNewAssertion(
 ) external
 ```
 
-## `RollupUserLogic`: the `newStake` function
+### `newStake` function
 
 This function is used to join the staker set without adding a new assertion.
 
@@ -203,7 +221,7 @@ function newStake(
 
 as above, under the hood, the latest confirmed assertion is used as the latest staked assertion for this staker. The funds are then transferred from the staker to the contract.
 
-## `RollupUserLogic`: the `returnOldDeposit` and `returnOldDepositFor` functions
+### `returnOldDeposit` and `returnOldDepositFor` functions
 
 This function is used to initiate a refund of the staker's deposit when its latest assertion either has a child or is confirmed.
 
@@ -221,7 +239,7 @@ In the first case, it is checked than the `msg.sender` is the validator itself, 
 
 At this point the `_withdrawableFunds` mapping value is increased by the staker's deposit for its withdrawal address, as well as the `totalWithdrawableFunds` value. The staker is then deleted from the `_stakerList` and `_stakerMap` mappings. The funds are not actually transferred at this point.
 
-## `RollupUserLogic`: the `withdrawStakerFunds` function
+### `withdrawStakerFunds` function
 
 This function is used to finalize the withdrawal of uncommitted funds from this contract to the `msg.sender`.
 
@@ -231,7 +249,7 @@ function withdrawStakerFunds() external override whenNotPaused returns (uint256)
 
 This is done by checking the `_withdrawableFunds` mapping, which maps from addresses to `uint256` amounts. The mapping is then set to zero, and the `totalWithdrawableFunds` value is updated accordingly. Finally, the funds are transferred to the `msg.sender`.
 
-## `RollupUserLogic`: the `addToDeposit` function
+### `addToDeposit` function
 
 This function is used to add funds to the staker's deposit.
 
@@ -245,7 +263,7 @@ function addToDeposit(
 
 The staker is supposed to be already staked when calling this function. In particular, the `amountStaked` is increased by the amount sent.
 
-## `RollupUserLogic`: the `reduceDeposit` function
+### `reduceDeposit` function
 
 This function is used to reduce the staker's deposit.
 
@@ -257,7 +275,7 @@ function reduceDeposit(
 
 The staker is required to be inactive. The difference between the current deposit and the `target` is then added to the amount of withdrawable funds. 
 
-## `RollupUserLogic`: the `removeWhitelistAfterValidatorAfk` function
+### `removeWhitelistAfterValidatorAfk` function
 
 If a whitelist is enabled, the system allows for its removal if all validators are inactive for a certain amount of time. If the `validatorAfkBlocks` is set to be greater than the challenge period (or more precisely, two times the challenge period in the worst case), then the child will be confirmed (if valid) before being used for the calculation. The first child check is likely used in case the `validatorAfkBlocks` is set to be smaller than the challenge period.
 
@@ -278,7 +296,7 @@ There is an edge case in case the `minimumAssertionPeriod` is set lower than the
 
 Under standard deployments, the `validatorAfkBlocks` value is set to be around twice the maximum delay caused by the challenge protocol, which is two times the challenge period.
 
-## `RollupUserLogic`: the `confirmAssertion` function
+### `confirmAssertion` function
 
 The function is used to confirm an assertion and make it available for withdrawals and in general L2 to L1 messages to be executed on L1.
 
@@ -358,7 +376,7 @@ In particular, the `claimId` is checked to be the assertion hash to be confirmed
 
 The current assertion is checked to be `Pending`, as opposed to `NoAssertion` or `Confirmed`. An external call to the Outbox is made by passing the `sendRoot` and `blockHash` saved in the current assertion's `globalState`. Finally, the `_latestConfirmed` asserrtion is updated with the current one and the status is updated to `Confirmed`.
 
-## `RollupUserLogic`: the `removeWhitelistAfterFork` function
+### `removeWhitelistAfterFork` function
 
 This function is used to remove the whitelist in case the chain id of the underlying chain changes.
 
@@ -367,3 +385,153 @@ function removeWhitelistAfterFork() external
 ```
 
 It simply checks that the `deploymentTimeChainId`, which is stored onchain, matches the `block.chainId` value.
+
+## The `RollupAdminLogic` contract
+
+Calls to the Rollup proxy are forwarded to this contract if the `msg.sender` is the designated proxy admin.
+
+### `setChallengeManager` function
+
+This function allows the proxy admin to update the challenge manager contract reference.
+
+```solidity
+function setChallengeManager(
+    address _challengeManager
+) external
+```
+
+The challenge manager contract is used to determine whether an assertion can be considered a winner or not when attempting to confirm it.
+
+### `setValidatorWhitelistDisabled` function
+
+This function allows the proxy admin to disable the validator whitelist.
+
+```solidity
+function setValidatorWhitelistDisabled(
+    bool _validatorWhitelistDisabled
+) external
+```
+
+If the whitelist is enabled, only whitelisted validators can join the staker set and therefore propose new assertions.
+
+### `setInbox` function
+
+This function allows the proxy admin to update the inbox contract reference.[^2]
+
+```solidity
+ function setInbox(
+    IInboxBase newInbox
+) external
+```
+
+[^2]: TODO: explain what it is and why it is referenced here.
+
+### `setSequencerInbox` function
+
+This function allows the proxy admin to update the sequencer inbox contract reference.
+
+```solidity
+function setSequencerInbox(
+    address _sequencerInbox
+) external override
+```
+
+The call is forwarded to the `bridge` contract, specifically by calling its `setSequencerInbox` function. The bridge will only accept messages to be enqueued in the main `sequencerInboxAccs` array if the call comes from the `sequencerInbox`. The `sequencerInboxAccs` is read when creating new assertions, in particular when assigning the `nextInboxPosition` to the new assertion and when checking that the currently considered assertion doesn't claim to have processed more messages than actually posted by the sequencer.
+
+### `setWasmModuleRoot` function
+
+This function allows the proxy admin to update the wasm module root, which represents the offchain program being verified by the proof system.
+
+```solidity
+function setWasmModuleRoot(
+    bytes32 newWasmModuleRoot
+) external override
+```
+
+The `wasmModuleRoot` is included in each assertion's `configData`.
+
+### `setLoserStakeEscrow` function
+
+This function allows the proxy admin to update the loser stake escrow contract reference.
+
+```solidity
+function setLoserStakeEscrow(
+    address newLoserStakerEscrow
+) external override
+```
+
+The loser stake escrow is used to store the excess stake when a conflicting assertion is created.
+
+### `forceConfirmAssertion` function
+
+This function allows the proxy admin to confirm an assertion without waiting for the challenge period, and without most validation of the assertions. 
+
+```solidity
+function forceConfirmAssertion(
+    bytes32 assertionHash,
+    bytes32 parentAssertionHash,
+    AssertionState calldata confirmState,
+    bytes32 inboxAcc
+) external override whenPaused
+```
+
+The function can only be called when the contract is paused. It is only checked that the assertion is `Pending`.
+
+### `forceCreateAssertion` function
+
+This function allows the proxy admin to create a new assertion by skipping some of the validation checks.
+
+```solidity
+function forceCreateAssertion(
+    bytes32 prevAssertionHash,
+    AssertionInputs calldata assertion,
+    bytes32 expectedAssertionHash
+) external override whenPaused
+```
+
+The function can only be called when the contract is paused. It skips all checks related to staking, the check that the previous assertion exists and that the `minimumAssertionPeriod` has passed. Since the `configHash` of the previous assertion is fetched from the `_assertions` mapping, and the current assertion's `configData` in its `beforeStateData` is still checked against it, then this effectively acts as an existence check.
+
+A comment in the function suggest a possible emergency procedure during which this function might be used:
+
+```solidity
+// To update the wasm module root in the case of a bug:
+// 0. pause the contract
+// 1. update the wasm module root in the contract
+// 2. update the config hash of the assertion after which you wish to use the new wasm module root (functionality not written yet)
+// 3. force refund the stake of the current leaf assertion(s)
+// 4. create a new assertion using the assertion with the updated config has as a prev
+// 5. force confirm it - this is necessary to set latestConfirmed on the correct line
+// 6. unpause the contract
+```
+
+### `forceRefundStaker` function
+
+This function allows the proxy admin to forcefully trigger refunds of stakers' deposit, bypassing the `msg.sender` checks.
+
+
+```solidity
+function forceRefundStaker(
+    address[] calldata staker
+)
+```
+
+The function still checks that each staker is inactive before triggering the refund.
+
+### `setBaseStake` function
+
+This function allows the proxy admin to update required stake to join the staker set and propose new assertions.
+
+```solidity
+function setBaseStake(
+    uint256 newBaseStake
+) external override
+```
+
+The function currently only allows to increase the base stake, not to decrease it, as an attacker might be able to steal honest funds from the contract. The possible attack is described in the function's comment:
+
+```solidity
+// 1. The malicious party creates a sibling assertion, stake size is currently S
+// 2. The base stake is then reduced to S'
+// 3. The malicious party uses a different address to create a child of the malicious assertion, using stake size S'
+// 4. This allows the malicious party to withdraw the stake S, since assertions with children set the staker to "inactive"
+```
