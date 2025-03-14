@@ -1,17 +1,16 @@
+# Forced transactions
+
 <!-- START doctoc generated TOC please keep comment here to allow auto update -->
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
 **Table of Contents**
 
-- [Forced transactions](#forced-transactions)
-  - [High-level flow](#high-level-flow)
-  - [`Inbox`: the `sendL2MessageFromOrigin` function](#inbox-the-sendl2messagefromorigin-function)
-  - [`Bridge`: the `enqueueDelayedMessage` function](#bridge-the-enqueuedelayedmessage-function)
-  - [`SequencerInbox`: the `forceInclusion` function](#sequencerinbox-the-forceinclusion-function)
-    - [The `DelayBuffer` library](#the-delaybuffer-library)
+- [High-level flow](#high-level-flow)
+- [`Inbox`: the `sendL2MessageFromOrigin` function](#inbox-the-sendl2messagefromorigin-function)
+- [`Bridge`: the `enqueueDelayedMessage` function](#bridge-the-enqueuedelayedmessage-function)
+- [`SequencerInbox`: the `forceInclusion` function](#sequencerinbox-the-forceinclusion-function)
+  - [The `DelayBuffer` library](#the-delaybuffer-library)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
-
-# Forced transactions
 
 Before the implementation of the censorship buffer, each transaction could have been censored by the permissioned sequencer for up to 24h. This was a problem for Orbit L3s on Arbitrum One as, in case of censorship, there wouldn't be enough time to play the challenge game on the L2 (for the L3) if the challenge period was set to 7d, as around ~60 moves are needed to finish a game, implying the need of at least 60 days.
 

@@ -9,24 +9,15 @@
   - [`stakeOnNewAssertion` function](#stakeonnewassertion-function)
   - [`newStakeOnNewAssertion` function](#newstakeonnewassertion-function)
   - [`newStake` function](#newstake-function)
+  - [`confirmAssertion` function](#confirmassertion-function)
   - [`returnOldDeposit` and `returnOldDepositFor` functions](#returnolddeposit-and-returnolddepositfor-functions)
   - [`withdrawStakerFunds` function](#withdrawstakerfunds-function)
   - [`addToDeposit` function](#addtodeposit-function)
   - [`reduceDeposit` function](#reducedeposit-function)
   - [`removeWhitelistAfterValidatorAfk` function](#removewhitelistaftervalidatorafk-function)
-  - [`confirmAssertion` function](#confirmassertion-function)
   - [`removeWhitelistAfterFork` function](#removewhitelistafterfork-function)
-- [The `RollupAdminLogic` contract](#the-rollupadminlogic-contract)
-  - [`setChallengeManager` function](#setchallengemanager-function)
-  - [`setValidatorWhitelistDisabled` function](#setvalidatorwhitelistdisabled-function)
-  - [`setInbox` function](#setinbox-function)
-  - [`setSequencerInbox` function](#setsequencerinbox-function)
-  - [`setWasmModuleRoot` function](#setwasmmoduleroot-function)
-  - [`setLoserStakeEscrow` function](#setloserstakeescrow-function)
-  - [`forceConfirmAssertion` function](#forceconfirmassertion-function)
-  - [`forceCreateAssertion` function](#forcecreateassertion-function)
-  - [`forceRefundStaker` function](#forcerefundstaker-function)
-  - [`setBaseStake` function](#setbasestake-function)
+- [Fast withdrawals](#fast-withdrawals)
+  - [`fastConfirmAssertion` and `fastConfirmNewAssertion` functions](#fastconfirmassertion-and-fastconfirmnewassertion-functions)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -221,81 +212,6 @@ function newStake(
 
 as above, under the hood, the latest confirmed assertion is used as the latest staked assertion for this staker. The funds are then transferred from the staker to the contract.
 
-### `returnOldDeposit` and `returnOldDepositFor` functions
-
-This function is used to initiate a refund of the staker's deposit when its latest assertion either has a child or is confirmed.
-
-```solidity
-function returnOldDeposit() external override onlyValidator(msg.sender) whenNotPaused
-```
-
-```solidity
-function returnOldDepositFor(
-    address stakerAddress
-) external override onlyValidator(stakerAddress) whenNotPaused
-```
-
-In the first case, it is checked than the `msg.sender` is the validator itself, while in the second case that the sender is the designated withdrawal address for the staker. Then it is verified that the staker is actively staked, and that it is "inactive". A staker is defined as inactive when their latest assertion is either confirmed or has at least one child, meaning that there is some other stake backing it.
-
-At this point the `_withdrawableFunds` mapping value is increased by the staker's deposit for its withdrawal address, as well as the `totalWithdrawableFunds` value. The staker is then deleted from the `_stakerList` and `_stakerMap` mappings. The funds are not actually transferred at this point.
-
-### `withdrawStakerFunds` function
-
-This function is used to finalize the withdrawal of uncommitted funds from this contract to the `msg.sender`.
-
-```solidity
-function withdrawStakerFunds() external override whenNotPaused returns (uint256)
-```
-
-This is done by checking the `_withdrawableFunds` mapping, which maps from addresses to `uint256` amounts. The mapping is then set to zero, and the `totalWithdrawableFunds` value is updated accordingly. Finally, the funds are transferred to the `msg.sender`.
-
-### `addToDeposit` function
-
-This function is used to add funds to the staker's deposit.
-
-```solidity
-function addToDeposit(
-    address stakerAddress,
-    address expectedWithdrawalAddress,
-    uint256 tokenAmount
-) external whenNotPaused
-```
-
-The staker is supposed to be already staked when calling this function. In particular, the `amountStaked` is increased by the amount sent.
-
-### `reduceDeposit` function
-
-This function is used to reduce the staker's deposit.
-
-```solidity
-function reduceDeposit(
-    uint256 target
-) external onlyValidator(msg.sender) whenNotPaused
-```
-
-The staker is required to be inactive. The difference between the current deposit and the `target` is then added to the amount of withdrawable funds. 
-
-### `removeWhitelistAfterValidatorAfk` function
-
-If a whitelist is enabled, the system allows for its removal if all validators are inactive for a certain amount of time. If the `validatorAfkBlocks` is set to be greater than the challenge period (or more precisely, two times the challenge period in the worst case), then the child will be confirmed (if valid) before being used for the calculation. The first child check is likely used in case the `validatorAfkBlocks` is set to be smaller than the challenge period.
-
-```solidity
-function removeWhitelistAfterValidatorAfk() external
-```
-
-The function checks whether the latest confirmed assertion, or its first child if present, is older than `validatorAfkBlocks`.  If the `validatorAfkBlocks` onchain value is set to 0, this mechanism is disabled.
-
-It's important to note that this function is quite different from its pre-BoLD version.
-
-There is an edge case in case the `minimumAssertionPeriod` is set lower than the difference between the challenge period and the `validatorAfkBlocks`, where the whitelist gets removed no matter what.
-
-<figure>
-    <img src="../static/assets/afkedgecase.svg" alt="Whitelist drop edge case">
-    <figcaption>Since the `validatorAfkBlocks` value is set to be lower than the challenge period, the whitelist might get unexpectedly dropped.</figcaption>
-</figure>
-
-Under standard deployments, the `validatorAfkBlocks` value is set to be around twice the maximum delay caused by the challenge protocol, which is two times the challenge period.
-
 ### `confirmAssertion` function
 
 The function is used to confirm an assertion and make it available for withdrawals and in general L2 to L1 messages to be executed on L1.
@@ -376,6 +292,83 @@ In particular, the `claimId` is checked to be the assertion hash to be confirmed
 
 The current assertion is checked to be `Pending`, as opposed to `NoAssertion` or `Confirmed`. An external call to the Outbox is made by passing the `sendRoot` and `blockHash` saved in the current assertion's `globalState`. Finally, the `_latestConfirmed` asserrtion is updated with the current one and the status is updated to `Confirmed`.
 
+
+
+### `returnOldDeposit` and `returnOldDepositFor` functions
+
+This function is used to initiate a refund of the staker's deposit when its latest assertion either has a child or is confirmed.
+
+```solidity
+function returnOldDeposit() external override onlyValidator(msg.sender) whenNotPaused
+```
+
+```solidity
+function returnOldDepositFor(
+    address stakerAddress
+) external override onlyValidator(stakerAddress) whenNotPaused
+```
+
+In the first case, it is checked than the `msg.sender` is the validator itself, while in the second case that the sender is the designated withdrawal address for the staker. Then it is verified that the staker is actively staked, and that it is "inactive". A staker is defined as inactive when their latest assertion is either confirmed or has at least one child, meaning that there is some other stake backing it.
+
+At this point the `_withdrawableFunds` mapping value is increased by the staker's deposit for its withdrawal address, as well as the `totalWithdrawableFunds` value. The staker is then deleted from the `_stakerList` and `_stakerMap` mappings. The funds are not actually transferred at this point.
+
+### `withdrawStakerFunds` function
+
+This function is used to finalize the withdrawal of uncommitted funds from this contract to the `msg.sender`.
+
+```solidity
+function withdrawStakerFunds() external override whenNotPaused returns (uint256)
+```
+
+This is done by checking the `_withdrawableFunds` mapping, which maps from addresses to `uint256` amounts. The mapping is then set to zero, and the `totalWithdrawableFunds` value is updated accordingly. Finally, the funds are transferred to the `msg.sender`.
+
+### `addToDeposit` function
+
+This function is used to add funds to the staker's deposit.
+
+```solidity
+function addToDeposit(
+    address stakerAddress,
+    address expectedWithdrawalAddress,
+    uint256 tokenAmount
+) external whenNotPaused
+```
+
+The staker is supposed to be already staked when calling this function. In particular, the `amountStaked` is increased by the amount sent.
+
+### `reduceDeposit` function
+
+This function is used to reduce the staker's deposit.
+
+```solidity
+function reduceDeposit(
+    uint256 target
+) external onlyValidator(msg.sender) whenNotPaused
+```
+
+The staker is required to be inactive. The difference between the current deposit and the `target` is then added to the amount of withdrawable funds. 
+
+### `removeWhitelistAfterValidatorAfk` function
+
+If a whitelist is enabled, the system allows for its removal if all validators are inactive for a certain amount of time. If the `validatorAfkBlocks` is set to be greater than the challenge period (or more precisely, two times the challenge period in the worst case), then the child will be confirmed (if valid) before being used for the calculation. The first child check is likely used in case the `validatorAfkBlocks` is set to be smaller than the challenge period.
+
+```solidity
+function removeWhitelistAfterValidatorAfk() external
+```
+
+The function checks whether the latest confirmed assertion, or its first child if present, is older than `validatorAfkBlocks`.  If the `validatorAfkBlocks` onchain value is set to 0, this mechanism is disabled.
+
+It's important to note that this function is quite different from its pre-BoLD version.
+
+There is an edge case in case the `minimumAssertionPeriod` is set lower than the difference between the challenge period and the `validatorAfkBlocks`, where the whitelist gets removed no matter what.
+
+<figure>
+    <img src="../static/assets/afkedgecase.svg" alt="Whitelist drop edge case">
+    <figcaption>Since the `validatorAfkBlocks` value is set to be lower than the challenge period, the whitelist might get unexpectedly dropped.</figcaption>
+</figure>
+
+Under standard deployments, the `validatorAfkBlocks` value is set to be around twice the maximum delay caused by the challenge protocol, which is two times the challenge period.
+
 ### `removeWhitelistAfterFork` function
 
 This function is used to remove the whitelist in case the chain id of the underlying chain changes.
@@ -386,152 +379,33 @@ function removeWhitelistAfterFork() external
 
 It simply checks that the `deploymentTimeChainId`, which is stored onchain, matches the `block.chainId` value.
 
-## The `RollupAdminLogic` contract
+## Fast withdrawals
 
-Calls to the Rollup proxy are forwarded to this contract if the `msg.sender` is the designated proxy admin.
+Fast withdrawals is a feature introduced in nitro-contracts v2.1.0 for AnyTrust chains. It allows to specify a `anyTrustFastConfirmer` address that can propose and confirm assertions without waiting for the challenge period to pass.
 
-### `setChallengeManager` function
+### `fastConfirmAssertion` and `fastConfirmNewAssertion` functions
 
-This function allows the proxy admin to update the challenge manager contract reference.
-
-```solidity
-function setChallengeManager(
-    address _challengeManager
-) external
-```
-
-The challenge manager contract is used to determine whether an assertion can be considered a winner or not when attempting to confirm it.
-
-### `setValidatorWhitelistDisabled` function
-
-This function allows the proxy admin to disable the validator whitelist.
+To immediately confirm an already proposed assertion, the `fastConfirmAssertion` function is used in the `RollupUserLogic` contract:
 
 ```solidity
-function setValidatorWhitelistDisabled(
-    bool _validatorWhitelistDisabled
-) external
-```
-
-If the whitelist is enabled, only whitelisted validators can join the staker set and therefore propose new assertions.
-
-### `setInbox` function
-
-This function allows the proxy admin to update the inbox contract reference.[^2]
-
-```solidity
- function setInbox(
-    IInboxBase newInbox
-) external
-```
-
-[^2]: TODO: explain what it is and why it is referenced here.
-
-### `setSequencerInbox` function
-
-This function allows the proxy admin to update the sequencer inbox contract reference.
-
-```solidity
-function setSequencerInbox(
-    address _sequencerInbox
-) external override
-```
-
-The call is forwarded to the `bridge` contract, specifically by calling its `setSequencerInbox` function. The bridge will only accept messages to be enqueued in the main `sequencerInboxAccs` array if the call comes from the `sequencerInbox`. The `sequencerInboxAccs` is read when creating new assertions, in particular when assigning the `nextInboxPosition` to the new assertion and when checking that the currently considered assertion doesn't claim to have processed more messages than actually posted by the sequencer.
-
-### `setWasmModuleRoot` function
-
-This function allows the proxy admin to update the wasm module root, which represents the offchain program being verified by the proof system.
-
-```solidity
-function setWasmModuleRoot(
-    bytes32 newWasmModuleRoot
-) external override
-```
-
-The `wasmModuleRoot` is included in each assertion's `configData`.
-
-### `setLoserStakeEscrow` function
-
-This function allows the proxy admin to update the loser stake escrow contract reference.
-
-```solidity
-function setLoserStakeEscrow(
-    address newLoserStakerEscrow
-) external override
-```
-
-The loser stake escrow is used to store the excess stake when a conflicting assertion is created.
-
-### `forceConfirmAssertion` function
-
-This function allows the proxy admin to confirm an assertion without waiting for the challenge period, and without most validation of the assertions. 
-
-```solidity
-function forceConfirmAssertion(
+function fastConfirmAssertion(
     bytes32 assertionHash,
     bytes32 parentAssertionHash,
     AssertionState calldata confirmState,
     bytes32 inboxAcc
-) external override whenPaused
+) public whenNotPaused
 ```
 
-The function can only be called when the contract is paused. It is only checked that the assertion is `Pending`.
+the function checks that the `msg.sender` is the `anyTrustFastConfirmer` address, and that the assertion is pending. The assertion is then confirmed as in the `confirmAssertion` function.
 
-### `forceCreateAssertion` function
-
-This function allows the proxy admin to create a new assertion by skipping some of the validation checks.
+The `anyTrustFastConfirmer` is also allowed to propose new assertions without staker checks, and also immediately confirm such assertions. To do so, the `fastConfirmNewAssertion` function is used:
 
 ```solidity
-function forceCreateAssertion(
-    bytes32 prevAssertionHash,
+function fastConfirmNewAssertion(
     AssertionInputs calldata assertion,
     bytes32 expectedAssertionHash
-) external override whenPaused
+) external whenNotPaused
 ```
 
-The function can only be called when the contract is paused. It skips all checks related to staking, the check that the previous assertion exists and that the `minimumAssertionPeriod` has passed. Since the `configHash` of the previous assertion is fetched from the `_assertions` mapping, and the current assertion's `configData` in its `beforeStateData` is still checked against it, then this effectively acts as an existence check.
+Both functions, in practice, act very similar to the admin-gated `forceCreateAssertion` and `forceConfirmAsserton` functions in the `RollupAdminLogic` contract, see [Admin operations](./admin_ops.md) for more details.
 
-A comment in the function suggest a possible emergency procedure during which this function might be used:
-
-```solidity
-// To update the wasm module root in the case of a bug:
-// 0. pause the contract
-// 1. update the wasm module root in the contract
-// 2. update the config hash of the assertion after which you wish to use the new wasm module root (functionality not written yet)
-// 3. force refund the stake of the current leaf assertion(s)
-// 4. create a new assertion using the assertion with the updated config has as a prev
-// 5. force confirm it - this is necessary to set latestConfirmed on the correct line
-// 6. unpause the contract
-```
-
-### `forceRefundStaker` function
-
-This function allows the proxy admin to forcefully trigger refunds of stakers' deposit, bypassing the `msg.sender` checks.
-
-
-```solidity
-function forceRefundStaker(
-    address[] calldata staker
-)
-```
-
-The function still checks that each staker is inactive before triggering the refund.
-
-### `setBaseStake` function
-
-This function allows the proxy admin to update required stake to join the staker set and propose new assertions.
-
-```solidity
-function setBaseStake(
-    uint256 newBaseStake
-) external override
-```
-
-The function currently only allows to increase the base stake, not to decrease it, as an attacker might be able to steal honest funds from the contract. The possible attack is described in the function's comment:
-
-```solidity
-// 1. The malicious party creates a sibling assertion, stake size is currently S
-// 2. The base stake is then reduced to S'
-// 3. The malicious party uses a different address to create a child of the malicious assertion, using stake size S'
-// 4. This allows the malicious party to withdraw the stake S, since assertions with children set the staker to "inactive"
-```
