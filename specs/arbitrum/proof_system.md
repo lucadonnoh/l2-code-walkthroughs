@@ -18,19 +18,22 @@
   - [`removeWhitelistAfterFork` function](#removewhitelistafterfork-function)
 - [Fast withdrawals](#fast-withdrawals)
   - [`fastConfirmAssertion` and `fastConfirmNewAssertion` functions](#fastconfirmassertion-and-fastconfirmnewassertion-functions)
+- [The `EdgeChallengeManager` contract](#the-edgechallengemanager-contract)
+  - [`createLayerZeroEdge` function](#createlayerzeroedge-function)
+    - [Block-level layer zero edges](#block-level-layer-zero-edges)
+    - [Non-block layer zero edges](#non-block-layer-zero-edges)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
 ## High-level overview
 
-Each pending assertion is backed by one single stake. A stake on an assertion also counts as a stake for all of its ancestors in the assertions tree. If an assertion has a child made by someone else, its stake can be moved anywhere else since there is already some stake backing it. Implicitly, the stake is tracked to be on the latest assertion a staker is staked on, and the outside logic makes sure that a new assertion can be created only in the proper conditions. In other words, it is made impossible for one actor to be staked on multiple assertions at the same time. If the last assertion of a staker has a child or is confirmed, then the staker is considered "inactive". If conflicting assertions are created, then one stake amount will be moved to a "loser stake escrow" as the protocol guarantees that only one stake will eventually remain active, and that the other will be slashed.
+Each pending assertion is backed by one single stake. A stake on an assertion also counts as a stake for all of its ancestors in the assertions tree. If an assertion has a child made by someone else, its stake can be moved anywhere else since there is already some stake backing it. Implicitly, the stake is tracked to be on the latest assertion a staker is staked on, and the outside logic makes sure that a new assertion can be created only in the proper conditions. In other words, it is made impossible for one actor to be staked on multiple assertions at the same time. If the last assertion of a staker has a child or is confirmed, then the staker is considered "inactive". If conflicting assertions are created, then one stake amount will be moved to a "loser stake escrow" as the protocol guarantees that only one stake will eventually remain active, and that the other will be slashed. The token used for staking is defined in the `stakeToken` onchain value.
 
 <figure>
     <img src="../static/assets/assertiontree.svg" alt="Assertion tree">
     <figcaption>An example of an assertion tree during an execution of the BoLD protocol.</figcaption>
 </figure>
 
-The token used for staking is defined in the `stakeToken` onchain value.
 
 ## The `RollupUserLogic` contract
 
@@ -164,15 +167,13 @@ struct GlobalState {
 
 where `u64Vals[0]` represents a inbox position, `u64Vals[1]` represents a position in message, `bytes32Vals[0]` represents a block hash, and `bytes32Vals[1]` represents a send root. It is checked that the position of the `afterState` is greater than the position of the `beforeState`, where the position is first checked against the inbox position, and, if equal, against the message position, to verify that the claim processes at least some new messages. It is then verified that the `beforeStateData`'s `nextInboxPosition` is greater or equal than the `afterState`'s inbox position. The `nextInboxPosition` can be seen as a "target" for the next assertion to process messages up to. If the current assertion didn't manage to process all messages up to the target, it is considered a "overflow" assertion. It is also checked that the current assertion doesn't claim to process more messages than currently posted by the sequencer.
 
-The `nextInboxPosition` is prepared for the next assertion to be either the current sequencer message count (as per `bridge.sequencerMessageCount()`), or, if the current assertion already processed all messages, to the current sequencer message count plus one. In this way, all assertions are forced to process at least one message, and in this case, the next assertion will process exactly one message before updating the `nextInboxPosition` again. The `afterInboxPosition` is then checked to be non-zero [^2]. The `newAssertionHash` is calculated given the `previousAssertionHash` already checked, the `afterState` and the `sequencerBatchAcc` calculated given the `afterState`'s inbox position in its `globalState`. It is check that this calculated hash is equal to the `expectedAssertionHash`, and that it doesn't already exist in the `_assertions` mapping.
+The `nextInboxPosition` is prepared for the next assertion to be either the current sequencer message count (as per `bridge.sequencerMessageCount()`), or, if the current assertion already processed all messages, to the current sequencer message count plus one. In this way, all assertions are forced to process at least one message, and in this case, the next assertion will process exactly one message before updating the `nextInboxPosition` again. The `afterInboxPosition` is then checked to be non-zero. The `newAssertionHash` is calculated given the `previousAssertionHash` already checked, the `afterState` and the `sequencerBatchAcc` calculated given the `afterState`'s inbox position in its `globalState`. It is check that this calculated hash is equal to the `expectedAssertionHash`, and that it doesn't already exist in the `_assertions` mapping.
 
 The new assertion is then created using the `AssertionNodeLib.createAssertion` function, which properly constructs the `AssertionNode` struct. The `isFirstChild` field is set to `true` only if the `prevAssertion`'s `firstChildBlock` is zero, meaning that there is none. The assertion status will be `Pending`, the `createdAtBlock` at the current block number, and the `configHash` will contain the current onchain wasm module root, the current onchain base stake, the current onchain challenge period length (`confirmPeriodBlocks`), the current onchain challenge manager contract reference and the `nextInboxPosition` as previously calculated. It is then saved in the previous assertion that a child has been created, and that the `_assertions` mapping is updated with the new assertion hash. 
 
 The `_stakerMap` is then updated to store the new latest assertion. If the assertion is not an overflow assertion, i.e. it didn't process all messages up to the target set by the previous assertion, a `minimumAssertionPeriod` gets enforced, meaning that validators cannot arbitrarily post assertions at any time of any size.
 
 If the assertion is not a first child, then the stake already present in this contract is transferred to the `loserStakeEscrow` contract, as only one stake is needed to be ready to be refunded from this contract.
-
-[^2]: TOCHECK: isn't this excessive...?
 
 ### `newStakeOnNewAssertion` function
 
@@ -409,3 +410,135 @@ function fastConfirmNewAssertion(
 
 Both functions, in practice, act very similar to the admin-gated `forceCreateAssertion` and `forceConfirmAsserton` functions in the `RollupAdminLogic` contract, see [Admin operations](./admin_ops.md) for more details.
 
+## The `EdgeChallengeManager` contract
+
+This contract implements the challenge protocol for the BoLD proof system.
+
+### `createLayerZeroEdge` function
+
+<figure>
+    <img src="../static/assets/layerzeroblock.svg" alt="Layer zero block">
+    <figcaption>Some structs and checks performed when creating a layer zero edge of type Block.</figcaption>
+</figure>
+
+This function is used to initiate a challenge between sibling assertions. All "layer zero" edges have a starting "height" of zero and a starting "length" of one.
+ 
+```solidity
+function createLayerZeroEdge(
+    CreateEdgeArgs calldata args
+) external returns (bytes32)
+```
+
+The `CreateEdgeArgs` struct is defined as:
+
+```solidity
+struct CreateEdgeArgs {
+    /// @notice The level of edge to be created. Challenges are decomposed into multiple levels.
+    ///         The first (level 0) being of type Block, followed by n (set by NUM_BIGSTEP_LEVEL) levels of type BigStep, and finally
+    ///         followed by a single level of type SmallStep. Each level is bisected until an edge
+    ///         of length one is reached before proceeding to the next level. The first edge in each level (the layer zero edge)
+    ///         makes a claim about an assertion or assertion in the lower level.
+    ///         Finally in the last level, a SmallStep edge is added that claims a lower level length one BigStep edge, and these
+    ///         SmallStep edges are bisected until they reach length one. A length one small step edge
+    ///         can then be directly executed using a one-step proof.
+    uint8 level;
+    /// @notice The end history root of the edge to be created
+    bytes32 endHistoryRoot;
+    /// @notice The end height of the edge to be created.
+    /// @dev    End height is deterministic for different levels but supplying it here gives the
+    ///         caller a bit of extra security that they are supplying data for the correct level of edge
+    uint256 endHeight;
+    /// @notice The edge, or assertion, that is being claimed correct by the newly created edge.
+    bytes32 claimId;
+    /// @notice Proof that the start history root commits to a prefix of the states that
+    ///         end history root commits to
+    bytes prefixProof;
+    /// @notice Edge type specific data
+    ///         For Block type edges this is the abi encoding of:
+    ///         bytes32[]: Inclusion proof - proof to show that the end state is the last state in the end history root
+    ///         AssertionStateData: the before state of the edge
+    ///         AssertionStateData: the after state of the edge
+    ///         bytes32 predecessorId: id of the prev assertion
+    ///         bytes32 inboxAcc:  the inbox accumulator of the assertion
+    ///         For BigStep and SmallStep edges this is the abi encoding of:
+    ///         bytes32: Start state - first state the edge commits to
+    ///         bytes32: End state - last state the edge commits to
+    ///         bytes32[]: Claim start inclusion proof - proof to show the start state is the first state in the claim edge
+    ///         bytes32[]: Claim end inclusion proof - proof to show the end state is the last state in the claim edge
+    ///         bytes32[]: Inclusion proof - proof to show that the end state is the last state in the end history root
+    bytes proof;
+}
+```
+
+In practice, the number of levels is usually set to be 3, with `NUM_BIGSTEP_LEVEL` set to 1. The `claimId` corresponds to an assertion hash.
+
+If a whitelist is enabled in the system being validated, then the `msg.sender` must be whitelisted. The whitelist is referenced through the `assertionChain` onchain value. The type of the edge is fetched based on the level: if `0` then the type is `Block`, if `1` then the type is `BigStep`, if `2` then the type is `SmallStep`. This section will first discuss layer zero edges of type `Block`.
+
+#### Block-level layer zero edges
+
+If the edge is of type `Block`, then the `proof` field is decoded to fetch two `AssertionStateData` structs, one for the `predecessorStateData` and the other for the `claimStateData`.
+
+The `AssertionStateData` struct is defined as:
+
+```solidity
+struct AssertionStateData {
+    /// @notice An execution state
+    AssertionState assertionState;
+    /// @notice assertion Hash of the prev assertion
+    bytes32 prevAssertionHash;
+    /// @notice Inbox accumulator of the assertion
+    bytes32 inboxAcc;
+}
+```
+
+It is checked that the `claimStateData` produces the same hash as the `claimId`, and that the `predecessorStateData` produces the same hash as the `claimStateData`'s `prevAssertionHash`. It is then checked the provided `endHistoryRoot` matches the one in the `claimStateData`'s `assertionState`.
+
+The `claimStateData`'s `previousAssertionHash` should be seen as a link to the information rivals agree on, which corresponds to the `predecessorStateData`.
+
+An `AssertionReferenceData` struct is created, which is defined as:
+
+```solidity
+struct AssertionReferenceData {
+    /// @notice The id of the assertion - will be used in a sanity check
+    bytes32 assertionHash;
+    /// @notice The predecessor of the assertion
+    bytes32 predecessorId;
+    /// @notice Is the assertion pending
+    bool isPending;
+    /// @notice Does the assertion have a sibling
+    bool hasSibling;
+    /// @notice The execution state of the predecessor assertion
+    AssertionState startState;
+    /// @notice The execution state of the assertion being claimed
+    AssertionState endState;
+}
+```
+
+which is instantiated in the following way:
+
+```solidity
+ard = AssertionReferenceData(
+    args.claimId,
+    claimStateData.prevAssertionHash,
+    assertionChain.isPending(args.claimId),
+    assertionChain.getSecondChildCreationBlock(claimStateData.prevAssertionHash) > 0,
+    predecessorStateData.assertionState,
+    claimStateData.assertionState
+)
+```
+
+The assertion must be `Pending` for its edge to be created and it has to have a rival, i.e. a sibling. It is checked that both the `machineStatus` of the `startState` and `endState` is not `RUNNING`.
+
+The `proof` is then decoded to fetch an `inclusionProof`. Hashes of both the `startState` and `endState` are computed. The `startHistoryRoot` is computed just by appending the `startState` hash to an empty merkle tree, as it is the initial state of a layer zero node. It is checked that the `endState` hash is included in the `endHistoryRoot` using the `inclusionProof`. The position of such hash is saved in the `LAYERZERO_BLOCKEDGE_HEIGHT` constant. Then it is checked that the previously computed `startHistoryRoot` is a prefix of `endHistoryRoot` by using the `prefixProof`.
+
+Finally, a `ChallengeEdge` is created using the `endState`'s `prevAssertionHash` as the `originId`, the `startHistoryRoot` computed before, a `startHeight` of zero, the `endHistoryRoot` provided, the proper `endHeight`, the `claimId`, the `msg.sender` as the staker, the appropriate level, the `status` is set to `Pending`, the `createdAtBlock` is set to the current block number, and the `confirmedAtBlock`, `lowerChildId`, `upperChildId` fields are initialized to zero and the `refunded` field is set to `false`.
+
+If the whitelist is enabled, then it is checked that a single party cannot create two layer zero edges that rival each other. If the whitelist is disabled with check is not effective as an attacker can simply use a different address.
+
+The edge is then added to the onchain `EdgeStore store` after it is checked that it doesn't exist already. The `mutualId` is calculated, which identifies all rival edges. If there is no rival, the edge is saved as `UNRIVALED` (representing a dummy edge id) in the `firstRivals` mapping, otherwise the current edge is saved into it.
+
+Finally, a stake is requested to be sent to this address if there are no rivals, or to the `excessStakeReceiver` otherwise, which corresponds to the `loserStakeEscrow` contract. It is important to note that for the `Block` level, the stake is set to zero.
+
+#### Non-block layer zero edges
+
+If the edge is not of type `Block`, then the the proof is not yet decoded and the above checks are not performed. Moreover, an empty `ard` is created. 
