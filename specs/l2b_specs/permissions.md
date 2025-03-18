@@ -97,7 +97,7 @@ At the time of writing, Arbitrum One makes use of three distinct multisigs for t
     * propose transactions with 14d 8h delay
     * update the minimum delay with 17d 8h delay
     * manage all access control roles of the timelock with 17d 8h delay
-    * cancel queued transactions with 17d 8h delay
+    * cancel queued transactions with 17d 8h delay 
   + Can interact with RollupProxy to:
     * pause and unpause the contract with 17d 8h delay
     * update sequencer management delegation with 17d 8h delay
