@@ -21,6 +21,12 @@ The permission section should not list nested multisigs when controlled by a sin
 
 Each non-EOA permissioned actor should have a description of its code, independent of the connections to other contracts. For example, multisigs should show the threshold, size and eventual modules, while governors should describe their own mechanism and params like quorums and voting periods. All permissioned actors should list the ultimate permissioned actions that they can perform on the system. Actors that have would produce the exact same description should be grouped together in one entry.
 
+```md
+- 0x123, 0x456, 0x789
+  + Can interact with Inbox to:
+    * sequence transactions  
+```
+
 ## Permissioned actions
 
 The "upgrade" permissioned action for each permissioned actor should group contracts based on the set of possible delays that can be used on them.
