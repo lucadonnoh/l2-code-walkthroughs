@@ -4,12 +4,11 @@
 
 # Code walkthroughs
 
-## Arbitrum
+- [Arbitrum](./code_walkthroughs/arbitrum/README.md)
+    - [Forced transactions](./code_walkthroughs/arbitrum/forced_txs.md)
+    - [Proof system](./code_walkthroughs/arbitrum/proof_system.md)
+    - [Admin operations](./code_walkthroughs/arbitrum/admin_ops.md)
 
-- [Forced transactions](./code_walkthroughs/arbitrum/forced_txs.md)
-- [Proof system](./code_walkthroughs/arbitrum/proof_system.md)
-- [Admin operations](./code_walkthroughs/arbitrum/admin_ops.md)
-
-# Specs
+# L2BEAT specs
 
 - [Permissions section](./l2b_specs/permissions.md)
