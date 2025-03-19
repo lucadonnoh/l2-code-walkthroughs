@@ -44,6 +44,26 @@ The "upgrade" permissioned action for each permissioned actor should group contr
     * SystemConfig <via>
 ```
 
+Such grouping can be achieved by first grouping individual contracts by delay, and then contracts by set of delays.
+
+```md
+[FoochainPortal] with [7d <via1>] delay
+[FoochainPortal] with [no <via2>] delay
+[L1StandardBridge] with [7d <via3>] delay
+[L1StandardBridge] with [no <via4>] delay
+[L1ERC721Bridge] with [7d <via5>] delay
+[SystemConfig] with [no <via6>] delay
+>>>
+[FoochainPortal] with [7d <via1>, no <via2>]
+[L1StandardBridge] with [7d <via3>, no <via4>]
+[L1ERC721Bridge] with [7d <via5>]
+[SystemConfig] with [no <via6>]
+>>>
+[FoochainPortal <via1_or_via2>, L1StandardBridge <via3_or_via4>] with [7d, no] delay
+[L1ERC721Brige <via5>] with [7d] delay
+[SystemConfig <via6>] with [no] delays
+```
+
 Each `<via>` should show the list of intermediate contracts used to perform the ultimate permissioned action, starting with the contract closer to the permissioned actor. If any contract adds a delay, it should be listed as well. The total delay shown with the permissioned action should be the sum of all delays in this chain of contracts.
 
 ```md
