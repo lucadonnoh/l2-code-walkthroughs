@@ -53,7 +53,7 @@ Each `<via>` should show the list of intermediate contracts used to perform the 
     * L1ERC721Bridge acting via Timelock1 with 3d delay -> Timelock2 with 4d delay -> ProxyAdmin or via Timelock3 with 7d delay -> ProxyAdmin
 ```
 
-Permissioned actions outside of upgrades should group by contract first and then list the actions with the appropriate delays. Each action should be listed as a separate entry.
+Permissioned actions outside of upgrades should group by contract first and then list the actions with the appropriate delays. Where possible, each action should be listed as a separate entry.
 
 ```md
 - **FoochainMultisig**
