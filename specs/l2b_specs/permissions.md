@@ -13,7 +13,7 @@
 
 ## Overview
 
-The goal of the permissions section is to list ultimate permissioned actors such as EOAs, multisigs, governors, or equivalent. What falls in the equivalent class is left to intuition and discussion.
+The goal of the permissions section is to list ultimate permissioned actors such as EOAs, multisigs, governors, or equivalent, that can affect the system. What falls in the equivalent class is left to intuition and discussion.
 
 ## Permissioned actors
 
