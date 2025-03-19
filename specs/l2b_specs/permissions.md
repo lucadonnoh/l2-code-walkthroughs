@@ -8,6 +8,7 @@
 - [Permissioned actors](#permissioned-actors)
 - [Permissioned actions](#permissioned-actions)
 - [Grouping actors by entity](#grouping-actors-by-entity)
+- [Possible future developments](#possible-future-developments)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -133,3 +134,7 @@ With the grouping, the permissions section would look like this:
     * update sequencer management delegation with 17d 8h or no delay <via>
     * ...
 ```
+
+## Possible future developments
+
+While still in the discussion phase, there's a will to show immediate permissioned given by each contract.For example, if a contract makes use of access control, each immediate role assigment would be shown, regardless of whether it is an intermediate contract or a permissioned actor. It is likely that this entries will be displayed in the contracts section under each contract rather than the permissions section.
