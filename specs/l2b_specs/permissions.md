@@ -34,7 +34,7 @@ The "upgrade" permissioned action for each permissioned actor should group contr
 
 ```md
 - **FoochainMultisig**
-  + A multisig with 3/5 threshold.
+  A multisig with 3/5 threshold.
   + Can upgrade with either 7d or no delay:
     * FoochainPortal <via>
     * L1StandardBridge <via>
@@ -48,7 +48,7 @@ Each `<via>` should show the list of intermediate contracts used to perform the 
 
 ```md
 - **FoochainMultisig**
-  + A multisig with 3/5 threshold.
+  A multisig with 3/5 threshold.
   + Can upgrade with 7d delay:
     * L1ERC721Bridge acting via Timelock1 with 3d delay -> Timelock2 with 4d delay -> ProxyAdmin or via Timelock3 with 7d delay -> ProxyAdmin
 ```
@@ -57,7 +57,7 @@ Permissioned actions outside of upgrades should group by contract first and then
 
 ```md
 - **FoochainMultisig**
-  + A multisig with 3/5 threshold.
+  A multisig with 3/5 threshold.
   + Can interact with Timelock1 to:
     * propose transactions with 3d delay <via>
     * update the minimum delay with 7d delay <via>
@@ -71,7 +71,7 @@ At the time of writing, Arbitrum One makes use of three distinct multisigs for t
 
 ```md
 - **L1EmergencySecurityCouncil**
-  + A multisig with 9/12 threshold.
+  A multisig with 9/12 threshold.
   + Can upgrade with no delay:
     * RollupProxy <via>
     * Outbox <via>
@@ -85,7 +85,7 @@ At the time of writing, Arbitrum One makes use of three distinct multisigs for t
     * update sequencer management delegation
     * ...
 - **L2EmergencySecurityCouncil**
-  + A multisig with 9/12 threshold.
+  A multisig with 9/12 threshold.
   + Can upgrade with no delay:
     * L2ERC20Gateway <via>
     * L2GatewayRouter <via>
@@ -94,7 +94,7 @@ At the time of writing, Arbitrum One makes use of three distinct multisigs for t
     * update the minimum delay
     * manage all access control roles of the timelock
 - **L2ProposerSecurityCouncil**
-  + A multisig with 9/12 threshold.
+  A multisig with 9/12 threshold.
   + Can upgrade with 17d 8h delay:
     * RollupProxy <via>
     * Outbox <via>
@@ -115,7 +115,7 @@ With the grouping, the permissions section would look like this:
 
 ```md
 - **SecurityCouncilMultisig**
-  + A multisig with 9/12 threshold. Acts through L1EmergencySecurityCouncil, L2EmergencySecurityCouncil and L2ProposerSecurityCouncil.
+  A multisig with 9/12 threshold. Acts through L1EmergencySecurityCouncil, L2EmergencySecurityCouncil and L2ProposerSecurityCouncil.
   + Can upgrade with either 14d 8h or no delay:
     * RollupProxy <via>
     * Outbox <via>
