@@ -537,8 +537,31 @@ If the whitelist is enabled, then it is checked that a single party cannot creat
 
 The edge is then added to the onchain `EdgeStore store` after it is checked that it doesn't exist already. The `mutualId` is calculated, which identifies all rival edges. If there is no rival, the edge is saved as `UNRIVALED` (representing a dummy edge id) in the `firstRivals` mapping, otherwise the current edge is saved into it.
 
-Finally, a stake is requested to be sent to this address if there are no rivals, or to the `excessStakeReceiver` otherwise, which corresponds to the `loserStakeEscrow` contract. It is important to note that for the `Block` level, the stake is set to zero.
+Finally, a stake is requested to be sent to this address if there are no rivals, or to the `excessStakeReceiver` otherwise, which corresponds to the `loserStakeEscrow` contract. It is important to note that for the `Block` level, the stake is set to zero, while for the other levels it is set to be some fractions of the bond needed to propose an assertion.
 
 #### Non-block layer zero edges
 
 If the edge is not of type `Block`, then the the proof is not yet decoded and the above checks are not performed. Moreover, an empty `ard` is created. 
+
+TODO
+
+### `bisectEdge` function
+
+This function is used to bisect edges into two children to break down the dispute process into smaller steps. No new stake as any new edge is checked agaist the history root of the parent edge.
+
+```solidity
+function bisectEdge(
+    bytes32 edgeId,
+    bytes32 bisectionHistoryRoot,
+    bytes calldata prefixProof
+) external returns (bytes32, bytes32)
+```
+
+It is checked that the edge being bisected is still `Pending` and that it is rivaled. It is then verified that the `bisectionHistoryRoot` is a prefix of the `endHistoryRoot` of the edge being bisected. 
+
+<figure>
+    <img src="../static/assets/historyproof.svg" alt="History proof">
+    <figcaption>The connection between a parent edge history root and child ones.</figcaption>
+</figure>
+
+Then both the lower and upper children are created, using the `startHistoryRoot` and `bisectionHistoryRoot` for the lower child, and `bisectionHistoryRoot` and `endHistoryRoot` root for the upper child. The children are then saved for the parent edge under the `lowerChildId` and `upperChildId` fields.
