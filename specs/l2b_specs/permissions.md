@@ -35,12 +35,12 @@ The "upgrade" permissioned action for each permissioned actor should group contr
 ```md
 - **FoochainMultisig**
   + A multisig with 3/5 threshold.
-  + Can upgrade with either 7d or 0d delay:
+  + Can upgrade with either 7d or no delay:
     * FoochainPortal <via>
     * L1StandardBridge <via>
   + Can upgrade with 7d delay:
     * L1ERC721Bridge <via>
-  + Can upgrade with 0d delay:
+  + Can upgrade with no delay:
     * SystemConfig <via>
 ```
 
@@ -122,8 +122,8 @@ With the grouping, the permissions section would look like this:
     * ...
   + Can interact with L1Timelock to:
     * propose transactions with 14d 8h <via>
-    * update the minimum delay with either 14d 8h or 0d delay <via>
-    * manage all access control roles of the timelock with either 14d 8h or 0d delay <via>
+    * update the minimum delay with either 14d 8h or no delay <via>
+    * manage all access control roles of the timelock with either 14d 8h or no delay <via>
     * cancel queued transactions with either 17d 8h or no delay <via>
   + Can interact with L2Timelock to:
     * propose transactions <via>
