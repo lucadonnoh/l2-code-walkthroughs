@@ -22,6 +22,7 @@
   - [`createLayerZeroEdge` function](#createlayerzeroedge-function)
     - [Block-level layer zero edges](#block-level-layer-zero-edges)
     - [Non-block layer zero edges](#non-block-layer-zero-edges)
+  - [`bisectEdge` function](#bisectedge-function)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -565,3 +566,5 @@ It is checked that the edge being bisected is still `Pending` and that it is riv
 </figure>
 
 Then both the lower and upper children are created, using the `startHistoryRoot` and `bisectionHistoryRoot` for the lower child, and `bisectionHistoryRoot` and `endHistoryRoot` root for the upper child. The children are then saved for the parent edge under the `lowerChildId` and `upperChildId` fields.
+
+### `confirmEdgeByOneStepProof` function
