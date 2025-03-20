@@ -21,9 +21,11 @@
 - [The `EdgeChallengeManager` contract](#the-edgechallengemanager-contract)
   - [`createLayerZeroEdge` function](#createlayerzeroedge-function)
     - [Block-level layer zero edges](#block-level-layer-zero-edges)
-    - [Non-block layer zero edges](#non-block-layer-zero-edges)
+    - [WIP: Non-block layer zero edges](#wip-non-block-layer-zero-edges)
   - [`bisectEdge` function](#bisectedge-function)
   - [`confirmEdgeByOneStepProof` function](#confirmedgebyonestepproof-function)
+- [The `OneStepProofEntry` contract](#the-onestepproofentry-contract)
+  - [`proveOneStep` function](#proveonestep-function)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -541,9 +543,11 @@ The edge is then added to the onchain `EdgeStore store` after it is checked that
 
 Finally, a stake is requested to be sent to this address if there are no rivals, or to the `excessStakeReceiver` otherwise, which corresponds to the `loserStakeEscrow` contract. It is important to note that for the `Block` level, the stake is set to zero, while for the other levels it is set to be some fractions of the bond needed to propose an assertion.
 
-#### Non-block layer zero edges
+#### WIP: Non-block layer zero edges
 
 If the edge is not of type `Block`, then the the proof is not yet decoded and the above checks are not performed. Moreover, an empty `ard` is created. 
+
+The `originId` in this case is the mutual id of an edge.
 
 TODO
 
@@ -569,3 +573,61 @@ It is checked that the edge being bisected is still `Pending` and that it is riv
 Then both the lower and upper children are created, using the `startHistoryRoot` and `bisectionHistoryRoot` for the lower child, and `bisectionHistoryRoot` and `endHistoryRoot` root for the upper child. The children are then saved for the parent edge under the `lowerChildId` and `upperChildId` fields.
 
 ### `confirmEdgeByOneStepProof` function
+
+This function is used to confirm an edge of length one with a one-step proof.
+
+```solidity
+ function confirmEdgeByOneStepProof(
+    bytes32 edgeId,
+    OneStepData calldata oneStepData,
+    ConfigData calldata prevConfig,
+    bytes32[] calldata beforeHistoryInclusionProof,
+    bytes32[] calldata afterHistoryInclusionProof
+) public
+```
+
+the function builds an `ExecutionContext` struct, which is defined as:
+
+```solidity
+struct ExecutionContext {
+    uint256 maxInboxMessagesRead;
+    IBridge bridge;
+    bytes32 initialWasmModuleRoot;
+}
+```
+
+where the `maxInboxMessagesRead` is filled with the `nextInboxPosition` of the config of the previous assertion, the `bridge` reference is taken from `assertionChain`, and the `initialWasmModuleRoot` is again taken from the config of the previous assertion. It is checked that the edge exists, that its type is `SmallStep`, and that its length is one.
+
+Then the appropriate data to pass to the `oneStepProofEntry` contract for the onchain one step execution is prepared. In particular, the machine step correspondingto the start height of this edge is computed. Machine steps reset to zero with new blocks, so there's no need to fetch the corresponding `Block` level edge. The machine step of a `SmallStep` edge corresponds to its `startHeight` plus the `startHeight` of its `BigStep` edge. Previous level edges are fetched through the `originId` field stored in each edge and the `firstRivals` mapping. It is necessary to go through the `firstRivals` mapping as the `originId` stores a mutual id of the edge and not an edge id, which is needed to fetch the `startHeight`.
+
+It is made sure that the `beforeHash` inside `oneStepData` is included in the `startHistoryRoot` at position `machineStep`. The `OneStepData` struct is defined as:
+
+```solidity
+struct OneStepData {
+    /// @notice The hash of the state that's being executed from
+    bytes32 beforeHash;
+    /// @notice Proof data to accompany the execution context
+    bytes proof;
+}
+```
+
+The `oneStepProofEntry.proveOneStep` function is then called passing the execution context, the machine step, the `beforeHash` and the `proof` to calculate the `afterHash`. It is then checked that the `afterHash`is included in the `endHistoryRoot` at position `machineStep + 1`.
+
+Finally, the edge satus is updated to `Confirmed`, and the `confirmedAtBlock` is set to the current block number. Moreover, it is checked that no other rival is already confirmed through the `confirmedRivals` mapping inside the `store`, and if not the edge is saved there under its mutual id.
+
+## The `OneStepProofEntry` contract
+
+This contract is used as the entry point to execute one-step proofs onchain.
+
+### `proveOneStep` function
+
+This function is used called from the `confirmEdgeByOneStepProof` function in the `EdgeChallengeManager` contract.
+
+```solidity
+function proveOneStep(
+    ExecutionContext calldata execCtx,
+    uint256 machineStep,
+    bytes32 beforeHash,
+    bytes calldata proof
+) external view returns (bytes32 afterHash)
+```
