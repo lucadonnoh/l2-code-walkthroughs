@@ -2,8 +2,13 @@
 
 - [Intro](./chapter_1.md)
 
-# Arbitrum
+# Code walkthroughs
 
-- [Forced transactions](./arbitrum/forced_txs.md)
-- [Proof system](./arbitrum/proof_system.md)
-- [Admin operations](./arbitrum/admin_ops.md)
+- [Arbitrum](./code_walkthroughs/arbitrum/README.md)
+    - [Forced transactions](./code_walkthroughs/arbitrum/forced_txs.md)
+    - [Proof system](./code_walkthroughs/arbitrum/proof_system.md)
+    - [Admin operations](./code_walkthroughs/arbitrum/admin_ops.md)
+
+# L2BEAT specs
+
+- [Permissions section](./l2b_specs/permissions.md)
