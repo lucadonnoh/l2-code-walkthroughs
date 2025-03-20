@@ -23,6 +23,7 @@
     - [Block-level layer zero edges](#block-level-layer-zero-edges)
     - [Non-block layer zero edges](#non-block-layer-zero-edges)
   - [`bisectEdge` function](#bisectedge-function)
+  - [`confirmEdgeByOneStepProof` function](#confirmedgebyonestepproof-function)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
