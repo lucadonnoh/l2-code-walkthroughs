@@ -31,7 +31,7 @@
 Each pending assertion is backed by one single stake. A stake on an assertion also counts as a stake for all of its ancestors in the assertions tree. If an assertion has a child made by someone else, its stake can be moved anywhere else since there is already some stake backing it. Implicitly, the stake is tracked to be on the latest assertion a staker is staked on, and the outside logic makes sure that a new assertion can be created only in the proper conditions. In other words, it is made impossible for one actor to be staked on multiple assertions at the same time. If the last assertion of a staker has a child or is confirmed, then the staker is considered "inactive". If conflicting assertions are created, then one stake amount will be moved to a "loser stake escrow" as the protocol guarantees that only one stake will eventually remain active, and that the other will be slashed. The token used for staking is defined in the `stakeToken` onchain value.
 
 <figure>
-    <img src="../static/assets/assertiontree.svg" alt="Assertion tree">
+    <img src="../../static/assets/assertiontree.svg" alt="Assertion tree">
     <figcaption>An example of an assertion tree during an execution of the BoLD protocol.</figcaption>
 </figure>
 
@@ -43,7 +43,7 @@ Calls to the Rollup proxy are forwarded to this contract if the `msg.sender` is 
 ### `stakeOnNewAssertion` function
 
 <figure>
-    <img src="../static/assets/boldstructs.svg" alt="BoLD structs">
+    <img src="../../static/assets/boldstructs.svg" alt="BoLD structs">
     <figcaption>Some of the used structures and performed checks before creating a new assertion.</figcaption>
 </figure>
 
@@ -365,7 +365,7 @@ It's important to note that this function is quite different from its pre-BoLD v
 There is an edge case in case the `minimumAssertionPeriod` is set lower than the difference between the challenge period and the `validatorAfkBlocks`, where the whitelist gets removed no matter what.
 
 <figure>
-    <img src="../static/assets/afkedgecase.svg" alt="Whitelist drop edge case">
+    <img src="../../static/assets/afkedgecase.svg" alt="Whitelist drop edge case">
     <figcaption>Since the `validatorAfkBlocks` value is set to be lower than the challenge period, the whitelist might get unexpectedly dropped.</figcaption>
 </figure>
 
@@ -418,7 +418,7 @@ This contract implements the challenge protocol for the BoLD proof system.
 ### `createLayerZeroEdge` function
 
 <figure>
-    <img src="../static/assets/layerzeroblock.svg" alt="Layer zero block">
+    <img src="../../static/assets/layerzeroblock.svg" alt="Layer zero block">
     <figcaption>Some structs and checks performed when creating a layer zero edge of type Block.</figcaption>
 </figure>
 
@@ -561,7 +561,7 @@ function bisectEdge(
 It is checked that the edge being bisected is still `Pending` and that it is rivaled. It is then verified that the `bisectionHistoryRoot` is a prefix of the `endHistoryRoot` of the edge being bisected. 
 
 <figure>
-    <img src="../static/assets/historyproof.svg" alt="History proof">
+    <img src="../../static/assets/historyproof.svg" alt="History proof">
     <figcaption>The connection between a parent edge history root and child ones.</figcaption>
 </figure>
 
