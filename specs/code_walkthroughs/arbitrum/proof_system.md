@@ -21,7 +21,7 @@
 - [The `EdgeChallengeManager` contract](#the-edgechallengemanager-contract)
   - [`createLayerZeroEdge` function](#createlayerzeroedge-function)
     - [Block-level layer zero edges](#block-level-layer-zero-edges)
-    - [WIP: Non-block layer zero edges](#wip-non-block-layer-zero-edges)
+    - [Non-block layer zero edges](#non-block-layer-zero-edges)
   - [`bisectEdge` function](#bisectedge-function)
   - [`confirmEdgeByOneStepProof` function](#confirmedgebyonestepproof-function)
 - [The `OneStepProofEntry` contract](#the-onestepproofentry-contract)
@@ -543,13 +543,25 @@ The edge is then added to the onchain `EdgeStore store` after it is checked that
 
 Finally, a stake is requested to be sent to this address if there are no rivals, or to the `excessStakeReceiver` otherwise, which corresponds to the `loserStakeEscrow` contract. It is important to note that for the `Block` level, the stake is set to zero, while for the other levels it is set to be some fractions of the bond needed to propose an assertion.
 
-#### WIP: Non-block layer zero edges
+#### Non-block layer zero edges
 
-If the edge is not of type `Block`, then the the proof is not yet decoded and the above checks are not performed. Moreover, an empty `ard` is created. 
+If the edge is not of type `Block`, it means that an assertion on a lower level is being proposed, and it must link to an assertion of lower level (with `Block` being the lowest one). It is possible to create a non-`Block` level layer zero edge only if the lower level edge is of length one and is rivaled. It is checked that such edge is also `Pending` and that the level is just one lower the one being proposed.
 
-The `originId` in this case is the mutual id of an edge.
+The proof is then decoded in the following manner:
 
-TODO
+```solidity
+(
+    bytes32 startState,
+    bytes32 endState,
+    bytes32[] memory claimStartInclusionProof,
+    bytes32[] memory claimEndInclusionProof,
+    bytes32[] memory edgeInclusionProof
+) = abi.decode(args.proof, (bytes32, bytes32, bytes32[], bytes32[], bytes32[]));
+```
+
+It is verified that the `startState` is part of the `startHistoryRoot` of the lower level edge and that the `endState` is part of the `endHistoryRoot` of the lower level edge, so that the current edge can be considered a more fine grained version of the lower level edge. It's important to note that it is still possible to propose an invalid higher-level edge for a valid lower-level edge, so it must be possible to propose multiple higher-level edges for the same lower-level edge.
+
+The rest of the checks follow the same as the `Block` level edges, starting from the ccreation of the `startHistoryRoot` as a length one merkle tree, followed by the check that the `endState` is included in the `endHistoryRoot` using the `edgeInclusionProof`, and so on.
 
 ### `bisectEdge` function
 
