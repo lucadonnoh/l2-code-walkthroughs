@@ -22,6 +22,10 @@
   - [`createLayerZeroEdge` function](#createlayerzeroedge-function)
     - [Block-level layer zero edges](#block-level-layer-zero-edges)
     - [Non-block layer zero edges](#non-block-layer-zero-edges)
+  - [`bisectEdge` function](#bisectedge-function)
+  - [`confirmEdgeByOneStepProof` function](#confirmedgebyonestepproof-function)
+- [The `OneStepProofEntry` contract](#the-onestepproofentry-contract)
+  - [`proveOneStep` function](#proveonestep-function)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -30,7 +34,7 @@
 Each pending assertion is backed by one single stake. A stake on an assertion also counts as a stake for all of its ancestors in the assertions tree. If an assertion has a child made by someone else, its stake can be moved anywhere else since there is already some stake backing it. Implicitly, the stake is tracked to be on the latest assertion a staker is staked on, and the outside logic makes sure that a new assertion can be created only in the proper conditions. In other words, it is made impossible for one actor to be staked on multiple assertions at the same time. If the last assertion of a staker has a child or is confirmed, then the staker is considered "inactive". If conflicting assertions are created, then one stake amount will be moved to a "loser stake escrow" as the protocol guarantees that only one stake will eventually remain active, and that the other will be slashed. The token used for staking is defined in the `stakeToken` onchain value.
 
 <figure>
-    <img src="../static/assets/assertiontree.svg" alt="Assertion tree">
+    <img src="../../static/assets/assertiontree.svg" alt="Assertion tree">
     <figcaption>An example of an assertion tree during an execution of the BoLD protocol.</figcaption>
 </figure>
 
@@ -42,7 +46,7 @@ Calls to the Rollup proxy are forwarded to this contract if the `msg.sender` is 
 ### `stakeOnNewAssertion` function
 
 <figure>
-    <img src="../static/assets/boldstructs.svg" alt="BoLD structs">
+    <img src="../../static/assets/boldstructs.svg" alt="BoLD structs">
     <figcaption>Some of the used structures and performed checks before creating a new assertion.</figcaption>
 </figure>
 
@@ -364,7 +368,7 @@ It's important to note that this function is quite different from its pre-BoLD v
 There is an edge case in case the `minimumAssertionPeriod` is set lower than the difference between the challenge period and the `validatorAfkBlocks`, where the whitelist gets removed no matter what.
 
 <figure>
-    <img src="../static/assets/afkedgecase.svg" alt="Whitelist drop edge case">
+    <img src="../../static/assets/afkedgecase.svg" alt="Whitelist drop edge case">
     <figcaption>Since the `validatorAfkBlocks` value is set to be lower than the challenge period, the whitelist might get unexpectedly dropped.</figcaption>
 </figure>
 
@@ -417,7 +421,7 @@ This contract implements the challenge protocol for the BoLD proof system.
 ### `createLayerZeroEdge` function
 
 <figure>
-    <img src="../static/assets/layerzeroblock.svg" alt="Layer zero block">
+    <img src="../../static/assets/layerzeroblock.svg" alt="Layer zero block">
     <figcaption>Some structs and checks performed when creating a layer zero edge of type Block.</figcaption>
 </figure>
 
@@ -541,9 +545,23 @@ Finally, a stake is requested to be sent to this address if there are no rivals,
 
 #### Non-block layer zero edges
 
-If the edge is not of type `Block`, then the the proof is not yet decoded and the above checks are not performed. Moreover, an empty `ard` is created. 
+If the edge is not of type `Block`, it means that an assertion on a lower level is being proposed, and it must link to an assertion of lower level (with `Block` being the lowest one). It is possible to create a non-`Block` level layer zero edge only if the lower level edge is of length one and is rivaled. It is checked that such edge is also `Pending` and that the level is just one lower the one being proposed.
 
-TODO
+The proof is then decoded in the following manner:
+
+```solidity
+(
+    bytes32 startState,
+    bytes32 endState,
+    bytes32[] memory claimStartInclusionProof,
+    bytes32[] memory claimEndInclusionProof,
+    bytes32[] memory edgeInclusionProof
+) = abi.decode(args.proof, (bytes32, bytes32, bytes32[], bytes32[], bytes32[]));
+```
+
+It is verified that the `startState` is part of the `startHistoryRoot` of the lower level edge and that the `endState` is part of the `endHistoryRoot` of the lower level edge, so that the current edge can be considered a more fine grained version of the lower level edge. It's important to note that it is still possible to propose an invalid higher-level edge for a valid lower-level edge, so it must be possible to propose multiple higher-level edges for the same lower-level edge.
+
+The rest of the checks follow the same as the `Block` level edges, starting from the ccreation of the `startHistoryRoot` as a length one merkle tree, followed by the check that the `endState` is included in the `endHistoryRoot` using the `edgeInclusionProof`, and so on.
 
 ### `bisectEdge` function
 
@@ -560,8 +578,68 @@ function bisectEdge(
 It is checked that the edge being bisected is still `Pending` and that it is rivaled. It is then verified that the `bisectionHistoryRoot` is a prefix of the `endHistoryRoot` of the edge being bisected. 
 
 <figure>
-    <img src="../static/assets/historyproof.svg" alt="History proof">
+    <img src="../../static/assets/historyproof.svg" alt="History proof">
     <figcaption>The connection between a parent edge history root and child ones.</figcaption>
 </figure>
 
 Then both the lower and upper children are created, using the `startHistoryRoot` and `bisectionHistoryRoot` for the lower child, and `bisectionHistoryRoot` and `endHistoryRoot` root for the upper child. The children are then saved for the parent edge under the `lowerChildId` and `upperChildId` fields.
+
+### `confirmEdgeByOneStepProof` function
+
+This function is used to confirm an edge of length one with a one-step proof.
+
+```solidity
+ function confirmEdgeByOneStepProof(
+    bytes32 edgeId,
+    OneStepData calldata oneStepData,
+    ConfigData calldata prevConfig,
+    bytes32[] calldata beforeHistoryInclusionProof,
+    bytes32[] calldata afterHistoryInclusionProof
+) public
+```
+
+the function builds an `ExecutionContext` struct, which is defined as:
+
+```solidity
+struct ExecutionContext {
+    uint256 maxInboxMessagesRead;
+    IBridge bridge;
+    bytes32 initialWasmModuleRoot;
+}
+```
+
+where the `maxInboxMessagesRead` is filled with the `nextInboxPosition` of the config of the previous assertion, the `bridge` reference is taken from `assertionChain`, and the `initialWasmModuleRoot` is again taken from the config of the previous assertion. It is checked that the edge exists, that its type is `SmallStep`, and that its length is one.
+
+Then the appropriate data to pass to the `oneStepProofEntry` contract for the onchain one step execution is prepared. In particular, the machine step correspondingto the start height of this edge is computed. Machine steps reset to zero with new blocks, so there's no need to fetch the corresponding `Block` level edge. The machine step of a `SmallStep` edge corresponds to its `startHeight` plus the `startHeight` of its `BigStep` edge. Previous level edges are fetched through the `originId` field stored in each edge and the `firstRivals` mapping. It is necessary to go through the `firstRivals` mapping as the `originId` stores a mutual id of the edge and not an edge id, which is needed to fetch the `startHeight`.
+
+It is made sure that the `beforeHash` inside `oneStepData` is included in the `startHistoryRoot` at position `machineStep`. The `OneStepData` struct is defined as:
+
+```solidity
+struct OneStepData {
+    /// @notice The hash of the state that's being executed from
+    bytes32 beforeHash;
+    /// @notice Proof data to accompany the execution context
+    bytes proof;
+}
+```
+
+The `oneStepProofEntry.proveOneStep` function is then called passing the execution context, the machine step, the `beforeHash` and the `proof` to calculate the `afterHash`. It is then checked that the `afterHash`is included in the `endHistoryRoot` at position `machineStep + 1`.
+
+Finally, the edge satus is updated to `Confirmed`, and the `confirmedAtBlock` is set to the current block number. Moreover, it is checked that no other rival is already confirmed through the `confirmedRivals` mapping inside the `store`, and if not the edge is saved there under its mutual id.
+
+## The `OneStepProofEntry` contract
+
+This contract is used as the entry point to execute one-step proofs onchain.
+
+### `proveOneStep` function
+
+This function is used called from the `confirmEdgeByOneStepProof` function in the `EdgeChallengeManager` contract.
+
+```solidity
+function proveOneStep(
+    ExecutionContext calldata execCtx,
+    uint256 machineStep,
+    bytes32 beforeHash,
+    bytes calldata proof
+) external view returns (bytes32 afterHash)
+```
