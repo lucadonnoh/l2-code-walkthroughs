@@ -21,10 +21,13 @@
 - [The `EdgeChallengeManager` contract](#the-edgechallengemanager-contract)
   - [`createLayerZeroEdge` function](#createlayerzeroedge-function)
     - [Block-level layer zero edges](#block-level-layer-zero-edges)
-    - [Non-block layer zero edges](#non-block-layer-zero-edges)
+    - [Non-block-level layer zero edges](#non-block-level-layer-zero-edges)
   - [`bisectEdge` function](#bisectedge-function)
   - [`confirmEdgeByOneStepProof` function](#confirmedgebyonestepproof-function)
-- [The `OneStepProofEntry` contract](#the-onestepproofentry-contract)
+  - [`confirmEdgeByTime` function](#confirmedgebytime-function)
+  - [`updateTimerCacheByClaim` function](#updatetimercachebyclaim-function)
+  - [`updateTimerCacheByChildren` function](#updatetimercachebychildren-function)
+- [[WIP] The `OneStepProofEntry` contract](#wip-the-onestepproofentry-contract)
   - [`proveOneStep` function](#proveonestep-function)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
