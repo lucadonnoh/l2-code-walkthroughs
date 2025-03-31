@@ -543,7 +543,7 @@ The edge is then added to the onchain `EdgeStore store` after it is checked that
 
 Finally, a stake is requested to be sent to this address if there are no rivals, or to the `excessStakeReceiver` otherwise, which corresponds to the `loserStakeEscrow` contract. It is important to note that for the `Block` level, the stake is set to zero, while for the other levels it is set to be some fractions of the bond needed to propose an assertion.
 
-#### Non-block layer zero edges
+#### Non-block-level layer zero edges
 
 If the edge is not of type `Block`, it means that an assertion on a lower level is being proposed, and it must link to an assertion of lower level (with `Block` being the lowest one). It is possible to create a non-`Block` level layer zero edge only if the lower level edge is of length one and is rivaled. It is checked that such edge is also `Pending` and that the level is just one lower the one being proposed.
 
@@ -627,7 +627,51 @@ The `oneStepProofEntry.proveOneStep` function is then called passing the executi
 
 Finally, the edge satus is updated to `Confirmed`, and the `confirmedAtBlock` is set to the current block number. Moreover, it is checked that no other rival is already confirmed through the `confirmedRivals` mapping inside the `store`, and if not the edge is saved there under its mutual id.
 
-## The `OneStepProofEntry` contract
+### `confirmEdgeByTime` function
+
+This function is used to confirm an edge when enough time has passed, i.e. one challenge period on the player's clock.
+
+```solidity
+function confirmEdgeByTime(bytes32 edgeId, AssertionStateData calldata claimStateData) public
+```
+
+Only layer zero edges can be confirmed by time.
+
+If the edge is block-level and the claim is the first child of its predecessor, then the time between its assertoin and the second child's assertion is counted towards this edge. If this was not done, then the timer wouldn't count the time from when the assertion is created but it would need to wait it to be challenged, which is absurd. 
+
+If the edge is unrivaled, then the time between the current block number and its creation is counted. If the edge is rivaled, and it was created before the rival, then the time between the rival's creation and this edge's creation is counted. If the edge is rivaled and it was created after the rival, then no time is counted.
+
+If the edge has been bisected, i.e. it has children, then the minimum children unrivaled time is counted. The rationale is that if a child is correct but the parent is not, it would be incorrect to count the unrivaled time of the correct child towards the parent. If the honest party acts as fast as possible, then an incorrect claim's unrivaled time would alywas be close to zero. If an edge is confirmed by a one step proof, then it's unrivaled time is set to infinity (in practice `type(uint64).max`).
+
+Finally, if the total time unrivaled is greater than the challenge period (espressed with `confirmationThresholdBlock`), then the edge is confirmed. Note that this value is a different variable compared to the `confirmPeriodBlocks` in the `RollupProxy` contract, which determines when an assertion can be confirmed if not challenged.
+
+The way that timers across different levels affect each other is explained in the following section.
+
+### `updateTimerCacheByClaim` function
+
+This function is used to update the timer cache with direct level inheritance.
+
+```solidity
+function updateTimerCacheByClaim(
+    bytes32 edgeId,
+    bytes32 claimingEdgeId,
+    uint256 maximumCachedTime
+) public
+```
+
+First, the total time unrivaled without level inheritance is calculated as explained in the `confirmEdgeByTime` function. It is then checked that the provided `claimingEdgeId`'s `claimId` corresponds to the `edgeId`. The `claimingEdgeId` unrivaled time is then added to the time unrivaled without level inheritance, and the edge unrivaled time is updated to this value only if it is greater than the current value.
+Note that this effectively acts as taking the max unrivaled time of the children edges on the higher level, as any of them can be used to update the parent edge's timer cache. The rationale is that at least one correct corresponding higher-level edge is needed to confirm the parent edge in the lower level.
+
+### `updateTimerCacheByChildren` function
+
+This function is used to update the timer cache without direct level inheritance.
+
+
+```solidity
+function updateTimerCacheByChildren(bytes32 edgeId, uint256 maximumCachedTime) public
+```
+
+## [WIP] The `OneStepProofEntry` contract
 
 This contract is used as the entry point to execute one-step proofs onchain.
 
