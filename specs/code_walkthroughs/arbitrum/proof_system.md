@@ -351,13 +351,12 @@ The staker is required to be inactive. The difference between the current deposi
 
 ### `removeWhitelistAfterValidatorAfk` function
 
-If a whitelist is enabled, the system allows for its removal if all validators are inactive for a certain amount of time. If the `validatorAfkBlocks` is set to be greater than the challenge period (or more precisely, two times the challenge period in the worst case), then the child will be confirmed (if valid) before being used for the calculation. The first child check is likely used in case the `validatorAfkBlocks` is set to be smaller than the challenge period.
+If a whitelist is enabled, the system allows for its removal if all validators are inactive for a certain amount of time. The function checks whether the latest confirmed assertion, or its first child if present, is older than `validatorAfkBlocks`. If the `validatorAfkBlocks` onchain value is set to 0, this mechanism is disabled.
 
 ```solidity
 function removeWhitelistAfterValidatorAfk() external
 ```
-
-The function checks whether the latest confirmed assertion, or its first child if present, is older than `validatorAfkBlocks`.  If the `validatorAfkBlocks` onchain value is set to 0, this mechanism is disabled.
+If the `validatorAfkBlocks` is set to be greater than the challenge period (or more precisely, two times the challenge period in the worst case), then the child will be confirmed (if valid) before being used for the calculation. The first child check is likely used in case the `validatorAfkBlocks` is set to be smaller than the challenge period.
 
 It's important to note that this function is quite different from its pre-BoLD version.
 
