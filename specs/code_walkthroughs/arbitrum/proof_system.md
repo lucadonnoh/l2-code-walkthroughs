@@ -21,7 +21,14 @@
 - [The `EdgeChallengeManager` contract](#the-edgechallengemanager-contract)
   - [`createLayerZeroEdge` function](#createlayerzeroedge-function)
     - [Block-level layer zero edges](#block-level-layer-zero-edges)
-    - [Non-block layer zero edges](#non-block-layer-zero-edges)
+    - [Non-block-level layer zero edges](#non-block-level-layer-zero-edges)
+  - [`bisectEdge` function](#bisectedge-function)
+  - [`confirmEdgeByOneStepProof` function](#confirmedgebyonestepproof-function)
+  - [`confirmEdgeByTime` function](#confirmedgebytime-function)
+  - [`updateTimerCacheByClaim` function](#updatetimercachebyclaim-function)
+  - [`updateTimerCacheByChildren` function](#updatetimercachebychildren-function)
+- [[WIP] The `OneStepProofEntry` contract](#wip-the-onestepproofentry-contract)
+  - [`proveOneStep` function](#proveonestep-function)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -30,7 +37,7 @@
 Each pending assertion is backed by one single stake. A stake on an assertion also counts as a stake for all of its ancestors in the assertions tree. If an assertion has a child made by someone else, its stake can be moved anywhere else since there is already some stake backing it. Implicitly, the stake is tracked to be on the latest assertion a staker is staked on, and the outside logic makes sure that a new assertion can be created only in the proper conditions. In other words, it is made impossible for one actor to be staked on multiple assertions at the same time. If the last assertion of a staker has a child or is confirmed, then the staker is considered "inactive". If conflicting assertions are created, then one stake amount will be moved to a "loser stake escrow" as the protocol guarantees that only one stake will eventually remain active, and that the other will be slashed. The token used for staking is defined in the `stakeToken` onchain value.
 
 <figure>
-    <img src="../static/assets/assertiontree.svg" alt="Assertion tree">
+    <img src="../../static/assets/assertiontree.svg" alt="Assertion tree">
     <figcaption>An example of an assertion tree during an execution of the BoLD protocol.</figcaption>
 </figure>
 
@@ -42,7 +49,7 @@ Calls to the Rollup proxy are forwarded to this contract if the `msg.sender` is 
 ### `stakeOnNewAssertion` function
 
 <figure>
-    <img src="../static/assets/boldstructs.svg" alt="BoLD structs">
+    <img src="../../static/assets/boldstructs.svg" alt="BoLD structs">
     <figcaption>Some of the used structures and performed checks before creating a new assertion.</figcaption>
 </figure>
 
@@ -363,7 +370,7 @@ It's important to note that this function is quite different from its pre-BoLD v
 There is an edge case in case the `minimumAssertionPeriod` is set lower than the difference between the challenge period and the `validatorAfkBlocks`, where the whitelist gets removed no matter what.
 
 <figure>
-    <img src="../static/assets/afkedgecase.svg" alt="Whitelist drop edge case">
+    <img src="../../static/assets/afkedgecase.svg" alt="Whitelist drop edge case">
     <figcaption>Since the `validatorAfkBlocks` value is set to be lower than the challenge period, the whitelist might get unexpectedly dropped.</figcaption>
 </figure>
 
@@ -416,7 +423,7 @@ This contract implements the challenge protocol for the BoLD proof system.
 ### `createLayerZeroEdge` function
 
 <figure>
-    <img src="../static/assets/layerzeroblock.svg" alt="Layer zero block">
+    <img src="../../static/assets/layerzeroblock.svg" alt="Layer zero block">
     <figcaption>Some structs and checks performed when creating a layer zero edge of type Block.</figcaption>
 </figure>
 
@@ -538,11 +545,25 @@ The edge is then added to the onchain `EdgeStore store` after it is checked that
 
 Finally, a stake is requested to be sent to this address if there are no rivals, or to the `excessStakeReceiver` otherwise, which corresponds to the `loserStakeEscrow` contract. It is important to note that for the `Block` level, the stake is set to zero, while for the other levels it is set to be some fractions of the bond needed to propose an assertion.
 
-#### Non-block layer zero edges
+#### Non-block-level layer zero edges
 
-If the edge is not of type `Block`, then the the proof is not yet decoded and the above checks are not performed. Moreover, an empty `ard` is created. 
+If the edge is not of type `Block`, it means that an assertion on a lower level is being proposed, and it must link to an assertion of lower level (with `Block` being the lowest one). It is possible to create a non-`Block` level layer zero edge only if the lower level edge is of length one and is rivaled. It is checked that such edge is also `Pending` and that the level is just one lower the one being proposed.
 
-TODO
+The proof is then decoded in the following manner:
+
+```solidity
+(
+    bytes32 startState,
+    bytes32 endState,
+    bytes32[] memory claimStartInclusionProof,
+    bytes32[] memory claimEndInclusionProof,
+    bytes32[] memory edgeInclusionProof
+) = abi.decode(args.proof, (bytes32, bytes32, bytes32[], bytes32[], bytes32[]));
+```
+
+It is verified that the `startState` is part of the `startHistoryRoot` of the lower level edge and that the `endState` is part of the `endHistoryRoot` of the lower level edge, so that the current edge can be considered a more fine grained version of the lower level edge. It's important to note that it is still possible to propose an invalid higher-level edge for a valid lower-level edge, so it must be possible to propose multiple higher-level edges for the same lower-level edge.
+
+The rest of the checks follow the same as the `Block` level edges, starting from the ccreation of the `startHistoryRoot` as a length one merkle tree, followed by the check that the `endState` is included in the `endHistoryRoot` using the `edgeInclusionProof`, and so on.
 
 ### `bisectEdge` function
 
@@ -559,8 +580,112 @@ function bisectEdge(
 It is checked that the edge being bisected is still `Pending` and that it is rivaled. It is then verified that the `bisectionHistoryRoot` is a prefix of the `endHistoryRoot` of the edge being bisected. 
 
 <figure>
-    <img src="../static/assets/historyproof.svg" alt="History proof">
+    <img src="../../static/assets/historyproof.svg" alt="History proof">
     <figcaption>The connection between a parent edge history root and child ones.</figcaption>
 </figure>
 
 Then both the lower and upper children are created, using the `startHistoryRoot` and `bisectionHistoryRoot` for the lower child, and `bisectionHistoryRoot` and `endHistoryRoot` root for the upper child. The children are then saved for the parent edge under the `lowerChildId` and `upperChildId` fields.
+
+### `confirmEdgeByOneStepProof` function
+
+This function is used to confirm an edge of length one with a one-step proof.
+
+```solidity
+ function confirmEdgeByOneStepProof(
+    bytes32 edgeId,
+    OneStepData calldata oneStepData,
+    ConfigData calldata prevConfig,
+    bytes32[] calldata beforeHistoryInclusionProof,
+    bytes32[] calldata afterHistoryInclusionProof
+) public
+```
+
+the function builds an `ExecutionContext` struct, which is defined as:
+
+```solidity
+struct ExecutionContext {
+    uint256 maxInboxMessagesRead;
+    IBridge bridge;
+    bytes32 initialWasmModuleRoot;
+}
+```
+
+where the `maxInboxMessagesRead` is filled with the `nextInboxPosition` of the config of the previous assertion, the `bridge` reference is taken from `assertionChain`, and the `initialWasmModuleRoot` is again taken from the config of the previous assertion. It is checked that the edge exists, that its type is `SmallStep`, and that its length is one.
+
+Then the appropriate data to pass to the `oneStepProofEntry` contract for the onchain one step execution is prepared. In particular, the machine step correspondingto the start height of this edge is computed. Machine steps reset to zero with new blocks, so there's no need to fetch the corresponding `Block` level edge. The machine step of a `SmallStep` edge corresponds to its `startHeight` plus the `startHeight` of its `BigStep` edge. Previous level edges are fetched through the `originId` field stored in each edge and the `firstRivals` mapping. It is necessary to go through the `firstRivals` mapping as the `originId` stores a mutual id of the edge and not an edge id, which is needed to fetch the `startHeight`.
+
+It is made sure that the `beforeHash` inside `oneStepData` is included in the `startHistoryRoot` at position `machineStep`. The `OneStepData` struct is defined as:
+
+```solidity
+struct OneStepData {
+    /// @notice The hash of the state that's being executed from
+    bytes32 beforeHash;
+    /// @notice Proof data to accompany the execution context
+    bytes proof;
+}
+```
+
+The `oneStepProofEntry.proveOneStep` function is then called passing the execution context, the machine step, the `beforeHash` and the `proof` to calculate the `afterHash`. It is then checked that the `afterHash`is included in the `endHistoryRoot` at position `machineStep + 1`.
+
+Finally, the edge satus is updated to `Confirmed`, and the `confirmedAtBlock` is set to the current block number. Moreover, it is checked that no other rival is already confirmed through the `confirmedRivals` mapping inside the `store`, and if not the edge is saved there under its mutual id.
+
+### `confirmEdgeByTime` function
+
+This function is used to confirm an edge when enough time has passed, i.e. one challenge period on the player's clock.
+
+```solidity
+function confirmEdgeByTime(bytes32 edgeId, AssertionStateData calldata claimStateData) public
+```
+
+Only layer zero edges can be confirmed by time.
+
+If the edge is block-level and the claim is the first child of its predecessor, then the time between its assertoin and the second child's assertion is counted towards this edge. If this was not done, then the timer wouldn't count the time from when the assertion is created but it would need to wait it to be challenged, which is absurd. 
+
+If the edge is unrivaled, then the time between the current block number and its creation is counted. If the edge is rivaled, and it was created before the rival, then the time between the rival's creation and this edge's creation is counted. If the edge is rivaled and it was created after the rival, then no time is counted.
+
+If the edge has been bisected, i.e. it has children, then the minimum children unrivaled time is counted. The rationale is that if a child is correct but the parent is not, it would be incorrect to count the unrivaled time of the correct child towards the parent. If the honest party acts as fast as possible, then an incorrect claim's unrivaled time would alywas be close to zero. If an edge is confirmed by a one step proof, then it's unrivaled time is set to infinity (in practice `type(uint64).max`).
+
+Finally, if the total time unrivaled is greater than the challenge period (espressed with `confirmationThresholdBlock`), then the edge is confirmed. Note that this value is a different variable compared to the `confirmPeriodBlocks` in the `RollupProxy` contract, which determines when an assertion can be confirmed if not challenged.
+
+The way that timers across different levels affect each other is explained in the following section.
+
+### `updateTimerCacheByClaim` function
+
+This function is used to update the timer cache with direct level inheritance.
+
+```solidity
+function updateTimerCacheByClaim(
+    bytes32 edgeId,
+    bytes32 claimingEdgeId,
+    uint256 maximumCachedTime
+) public
+```
+
+First, the total time unrivaled without level inheritance is calculated as explained in the `confirmEdgeByTime` function. It is then checked that the provided `claimingEdgeId`'s `claimId` corresponds to the `edgeId`. The `claimingEdgeId` unrivaled time is then added to the time unrivaled without level inheritance, and the edge unrivaled time is updated to this value only if it is greater than the current value.
+Note that this effectively acts as taking the max unrivaled time of the children edges on the higher level, as any of them can be used to update the parent edge's timer cache. The rationale is that at least one correct corresponding higher-level edge is needed to confirm the parent edge in the lower level.
+
+### `updateTimerCacheByChildren` function
+
+This function is used to update the timer cache without direct level inheritance.
+
+
+```solidity
+function updateTimerCacheByChildren(bytes32 edgeId, uint256 maximumCachedTime) public
+```
+
+## [WIP] The `OneStepProofEntry` contract
+
+This contract is used as the entry point to execute one-step proofs onchain.
+
+### `proveOneStep` function
+
+This function is used called from the `confirmEdgeByOneStepProof` function in the `EdgeChallengeManager` contract.
+
+```solidity
+function proveOneStep(
+    ExecutionContext calldata execCtx,
+    uint256 machineStep,
+    bytes32 beforeHash,
+    bytes calldata proof
+) external view returns (bytes32 afterHash)
+```
